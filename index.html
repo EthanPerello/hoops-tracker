@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12151d">
+<title>Hoops Rankings</title>
+<style>
+:root{--bg:#12151d;--card:#1a1e2a;--card2:#222737;--line:#2b3144;--text:#e9ecf4;--muted:#8d95aa;--accent:#00ceb8;--warn:#ffb84d;--bad:#ff6b6b;--good:#4ade80;--namew:128px}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer;padding:0}
+header{padding:10px 12px 6px;display:flex;align-items:center;gap:8px}
+header h1{font-size:18px;margin:0;flex:1;letter-spacing:.2px}
+header h1 span{color:var(--accent)}
+.icon{width:36px;height:36px;border-radius:10px;background:var(--card);display:grid;place-items:center;font-size:18px}
+#status{padding:0 12px 6px;font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;vertical-align:1px}
+.ok{background:var(--good)}.fail{background:var(--bad)}.stale{background:var(--warn)}
+.bar{padding:0 12px 6px;display:flex;gap:8px;align-items:center}
+.search{flex:1;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
+.search:focus{outline:1px solid var(--accent)}
+.seg{display:flex;background:var(--card);border-radius:10px;padding:2px;gap:2px}
+.seg button{padding:6px 10px;border-radius:8px;font-size:13px;color:var(--muted);white-space:nowrap}
+.seg button.on{background:var(--card2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
+.seg.full{margin:0 12px 6px}
+.seg.full button{flex:1;text-align:center}
+.chips{padding:0 12px 8px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.chip{padding:5px 11px;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--muted);font-size:13px;white-space:nowrap}
+.chip.on{background:rgba(0,206,184,.15);border-color:var(--accent);color:var(--accent)}
+.tbl{flex:1;overflow:auto;border-top:1px solid var(--line);position:relative;-webkit-overflow-scrolling:touch}
+.grid{display:grid;grid-template-columns:var(--namew) repeat(var(--n),var(--w));min-width:max-content}
+.grid>*{padding:0 2px}
+.hd{position:sticky;top:0;z-index:3;background:var(--card);height:34px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--line);cursor:pointer;user-select:none}
+.hd.nm{justify-content:flex-start;padding-left:12px;left:0;z-index:4;cursor:default}
+.hd.on{color:var(--accent)}
+.hd.on::after{content:attr(data-dir);margin-left:1px;font-size:9px}
+.c{display:flex;align-items:center;justify-content:center;height:48px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;font-size:13px;cursor:pointer}
+.c.nm{position:sticky;left:0;z-index:2;background:var(--bg);flex-direction:column;align-items:flex-start;justify-content:center;padding-left:12px;overflow:hidden;gap:1px;border-right:1px solid var(--line)}
+.c.nm b{font-weight:600;font-size:13.5px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c.nm small{font-size:11px;color:var(--muted);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.own{color:#8ab4ff}.own.me{color:var(--accent);font-weight:600}
+.tag{display:inline-block;font-size:9px;font-weight:700;border-radius:4px;padding:1px 3px;margin-left:4px;vertical-align:1px;background:var(--bad);color:#fff}
+.tag.q{background:var(--warn);color:#222}
+.r1{color:var(--good);font-weight:700}.r2{color:#a7f3c0}.r3{color:var(--text)}.r4{color:var(--muted)}
+.dim{color:var(--muted)}
+.hint{padding:30px 20px;text-align:center;color:var(--muted)}
+.hint button{margin-top:10px;background:var(--accent);color:#06211e;padding:8px 14px;border-radius:10px;font-weight:600}
+.sortrow{padding:0 12px 8px;display:flex;gap:6px;align-items:center;overflow-x:auto;scrollbar-width:none}
+.sortrow[hidden]{display:none}
+.sortrow span{font-size:11px;color:var(--muted);text-transform:uppercase}
+/* sheet */
+#ov{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:10}
+#ov.show{display:block}
+#sheet{position:fixed;left:0;right:0;bottom:0;max-height:90dvh;background:var(--card);border-radius:18px 18px 0 0;z-index:11;overflow:auto;display:none;padding:14px 14px calc(20px + env(safe-area-inset-bottom));max-width:640px;margin:0 auto}
+#sheet.show{display:block}
+#sheet h2{margin:0 0 2px;font-size:20px}
+#sheet h3{margin:18px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.x{position:absolute;right:10px;top:8px;width:34px;height:34px;font-size:22px;color:var(--muted)}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.badge{background:var(--card2);border-radius:6px;padding:2px 8px;font-size:12px;color:var(--muted)}
+.kv{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0}
+.kv div{background:var(--card2);border-radius:10px;padding:8px 4px;text-align:center}
+.kv b{display:block;font-size:17px}.kv small{font-size:10px;color:var(--muted);text-transform:uppercase}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:12.5px}
+th,td{padding:6px 4px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-size:10.5px;text-transform:uppercase;font-weight:600}
+th:first-child,td:first-child{text-align:left}
+.logs{overflow-x:auto}
+td.fp{color:var(--accent);font-weight:600}
+.src{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)}
+.row2{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
+.field{display:grid;grid-template-columns:1fr 78px;align-items:center;gap:8px;padding:4px 0}
+.field input[type=number]{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:6px 8px;width:100%;text-align:right}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:2px 18px}
+.btn{background:var(--accent);color:#06211e;padding:9px 14px;border-radius:10px;font-weight:600}
+.btn.sec{background:var(--card2);color:var(--text)}
+.sheet-in{width:100%;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+.note{font-size:12px;color:var(--muted);margin:6px 0}
+.note.err{color:var(--bad)}.note.good{color:var(--good)}
+.tog{display:flex;gap:10px;align-items:flex-start;padding:6px 0;font-size:13px}
+.tog input{margin-top:2px;accent-color:var(--accent);width:18px;height:18px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Hoops <span>Rankings</span></h1>
+  <button class="icon" id="gear" aria-label="Settings">⚙</button>
+</header>
+<div id="status"></div>
+<div class="bar">
+  <input class="search" id="q" type="search" placeholder="Search players" autocomplete="off">
+  <div class="seg" id="viewSeg"><button data-v="fantasy" class="on">Fantasy</button><button data-v="stats">Stats</button></div>
+</div>
+<div class="seg full" id="filterSeg">
+  <button data-f="all" class="on">All</button><button data-f="mine">My players</button><button data-f="rostered">Rostered</button><button data-f="avail">Available</button>
+</div>
+<div class="chips" id="posChips"></div>
+<div class="sortrow" id="statsCtl" hidden>
+  <div class="seg" id="winSeg"><button data-w="season" class="on">Season</button><button data-w="l5">Last 5</button></div>
+  <span>Sort</span><div class="chips" id="fcChips" style="padding:0"></div>
+</div>
+<div class="tbl" id="tbl"></div>
+<div id="ov"></div>
+<div id="sheet" role="dialog" aria-modal="true"></div>
+
+<script>
+'use strict';
+/* ---------------- helpers ---------------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fold = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[.'’]/g, '');
+const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } };
+const lsSet = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+const fmt = (v, d = 1) => v == null || isNaN(v) ? '—' : Number(v).toFixed(d);
+
+/* ---------------- scoring settings ---------------- */
+// [key, label, default, sleeper keys that map onto it]
+const SCORING = [
+  ['pts','Points',1,['pts']], ['ast','Assist',2,['ast']], ['stl','Steal',3,['stl']], ['blk','Block',3,['blk']],
+  ['to','Turnover',-1,['to']], ['dd','Double-double',2,['dd']], ['td','Triple-double',3,['td']], ['tf','Technical foul',-1,['tf']],
+  ['fgm','FGM',1,['fgm']], ['fga','FGA',-0.25,['fga']], ['ftm','FTM',1,['ftm']], ['ftmiss','FT missed',-0.5,['ftmiss']],
+  ['tpm','3PM',1,['tpm','fg3m']], ['oreb','Off reb',1.5,['oreb']], ['dreb','Def reb',1,['dreb']],
+  ['b40','40+ pts bonus',2,['bonus_pt_40p']], ['b50','50+ pts bonus',3,['bonus_pt_50p']],
+  ['b15ast','15+ ast bonus',2,['bonus_ast_15p']], ['b20reb','20+ reb bonus',2,['bonus_reb_20p']],
+  // extras: default 0, here so a Sleeper import can carry them over
+  ['fgmiss','FG missed',0,['fgmiss']], ['fta','FTA',0,['fta']], ['tpa','3PA',0,['tpa','fg3a']], ['tpmiss','3P missed',0,['tpmiss']],
+  ['reb','Reb (total)',0,['reb']], ['pf','Personal foul',0,['pf']],
+];
+const DEFAULTS = Object.fromEntries(SCORING.map(([k,,d]) => [k, d]));
+DEFAULTS.tdAlsoDd = true;   // triple-double also earns the double-double bonus
+DEFAULTS.b50Also40 = true;  // 50+ also earns the 40+ bonus
+let S = { ...DEFAULTS, ...lsGet('hoops.scoring', {}) };
+
+/* ---------------- state ---------------- */
+let players = [], meta = null, IX = {};
+let league = lsGet('hoops.league', null);   // {id,name,teams:[{rid,name}],owners:{pid:rid},scoring}
+let myRid = lsGet('hoops.myRid', null);
+const ui = Object.assign({ view:'fantasy', win:'season', filter:'all', pos:[], q:'', sort:{key:'ros',dir:1} }, lsGet('hoops.ui', {}));
+ui.q = '';
+const FANT_COLS = [['dyn','DYN'],['ros','ROS'],['fppg','FPPG'],['mpg','MPG'],['l5fp','L5 FP'],['l5mpg','L5 MPG']];
+const STAT_COLS = [['gp','GP'],['min','MIN'],['pts','PTS'],['reb','REB'],['ast','AST'],['stl','STL'],['blk','BLK'],['to','TO'],['tpm','3PM'],['fgp','FG%'],['ftp','FT%'],['fppg','FPPG']];
+const ASC = new Set(['dyn','ros']);
+
+/* ---------------- fantasy points ---------------- */
+function fpOf(l, s = S) {
+  const g = k => l[IX[k]] || 0;
+  const pts=g('pts'), ast=g('ast'), stl=g('stl'), blk=g('blk'), oreb=g('oreb'), dreb=g('dreb'), reb=oreb+dreb;
+  const fgm=g('fgm'), fga=g('fga'), ftm=g('ftm'), fta=g('fta'), tpm=g('tpm'), tpa=g('tpa');
+  let fp = pts*s.pts + ast*s.ast + stl*s.stl + blk*s.blk + g('to')*s.to + g('tf')*s.tf
+    + fgm*s.fgm + fga*s.fga + (fga-fgm)*s.fgmiss + ftm*s.ftm + fta*s.fta + (fta-ftm)*s.ftmiss
+    + tpm*s.tpm + tpa*s.tpa + (tpa-tpm)*s.tpmiss + oreb*s.oreb + dreb*s.dreb + reb*s.reb + g('pf')*s.pf;
+  const cats = [pts, reb, ast, stl, blk].filter(x => x >= 10).length;
+  if (cats >= 3) { fp += s.td; if (s.tdAlsoDd) fp += s.dd; } else if (cats === 2) fp += s.dd;
+  if (pts >= 50) { fp += s.b50; if (s.b50Also40) fp += s.b40; } else if (pts >= 40) fp += s.b40;
+  if (ast >= 15) fp += s.b15ast;
+  if (reb >= 20) fp += s.b20reb;
+  return fp;
+}
+function agg(games) {
+  const n = games.length; if (!n) return null;
+  const sum = k => games.reduce((a, x) => a + (x.l[IX[k]] || 0), 0);
+  const reb = games.reduce((a, x) => a + (x.l[IX.oreb] || 0) + (x.l[IX.dreb] || 0), 0);
+  const fga = sum('fga'), fta = sum('fta');
+  return { gp:n, min:sum('min')/n, pts:sum('pts')/n, reb:reb/n, ast:sum('ast')/n, stl:sum('stl')/n, blk:sum('blk')/n,
+    to:sum('to')/n, tpm:sum('tpm')/n, fgp: fga ? sum('fgm')/fga*100 : null, ftp: fta ? sum('ftm')/fta*100 : null,
+    fppg: games.reduce((a, x) => a + x.fp, 0)/n };
+}
+function compute() {
+  for (const p of players) {
+    p.g = (p.logs || []).map(l => ({ l, fp: fpOf(l) }));
+    p.s = agg(p.g); p.l5 = agg(p.g.slice(-5));
+  }
+}
+
+/* ---------------- league / owners ---------------- */
+const ownerOf = p => league && p.sid && league.owners[p.sid] != null ? league.owners[p.sid] : null;
+const teamName = rid => (league?.teams.find(t => t.rid === rid) || {}).name || 'Team ' + rid;
+function ownerLabel(p) {
+  const rid = ownerOf(p); if (rid == null) return null;
+  return rid === myRid ? 'You' : teamName(rid);
+}
+async function fetchLeague(id) {
+  const base = 'https://api.sleeper.app/v1/league/' + id;
+  const [lg, rosters, users] = await Promise.all([base, base + '/rosters', base + '/users'].map(async u => {
+    const r = await fetch(u); if (!r.ok) throw new Error('Sleeper returned ' + r.status + ' for ' + u.replace(base, 'league'));
+    return r.json();
+  }));
+  if (!lg || !lg.league_id) throw new Error('League not found');
+  const umap = Object.fromEntries(users.map(u => [u.user_id, u.metadata?.team_name || u.display_name]));
+  const teams = [], owners = {};
+  for (const r of rosters) {
+    teams.push({ rid: r.roster_id, name: umap[r.owner_id] || 'Team ' + r.roster_id, owner_id: r.owner_id });
+    for (const pid of r.players || []) owners[pid] = r.roster_id;
+  }
+  return { id, name: lg.name, season: lg.season, teams, owners, scoring: lg.scoring_settings || {}, fetchedAt: Date.now() };
+}
+function leagueIdFrom(text) {
+  const m = String(text).match(/leagues?\/(\d+)/i) || String(text).match(/\b(\d{12,})\b/);
+  return m ? m[1] : null;
+}
+
+/* ---------------- list rendering ---------------- */
+function val(p, k) {
+  switch (k) {
+    case 'dyn': return p.dyn; case 'ros': return p.ros;
+    case 'fppg': return p.s?.fppg; case 'mpg': return p.s?.min;
+    case 'l5fp': return p.l5?.fppg; case 'l5mpg': return p.l5?.min;
+  }
+  if (k.startsWith('st_')) return (ui.win === 'l5' ? p.l5 : p.s)?.[k.slice(3)];
+}
+function visible() {
+  const q = fold(ui.q).trim();
+  return players.filter(p => {
+    if (ui.filter === 'mine' && !(league && ownerOf(p) === myRid && myRid != null)) return false;
+    if (ui.filter === 'rostered' && ownerOf(p) == null) return false;
+    if (ui.filter === 'avail' && ownerOf(p) != null) return false;
+    if (ui.pos.length && !(p.pos || []).some(x => ui.pos.includes(x))) return false;
+    if (q && !fold(p.name).includes(q)) return false;
+    return true;
+  });
+}
+function rankCls(v) { return v == null ? 'dim' : v <= 12 ? 'r1' : v <= 36 ? 'r2' : v <= 100 ? 'r3' : 'r4'; }
+function cell(k, p, stat) {
+  if (stat) {
+    const v = val(p, 'st_' + k);
+    return `<div class="c" data-id="${esc(p.id)}">${k === 'gp' ? fmt(v, 0) : k === 'fppg' ? `<b>${fmt(v)}</b>` : fmt(v)}</div>`;
+  }
+  const v = val(p, k);
+  if (k === 'dyn' || k === 'ros') return `<div class="c ${rankCls(v)}" data-id="${esc(p.id)}">${v ?? '—'}</div>`;
+  return `<div class="c ${k === 'fppg' || k === 'l5fp' ? '' : 'dim'}" data-id="${esc(p.id)}">${fmt(v)}</div>`;
+}
+function nameCell(p, stat) {
+  const o = ownerLabel(p);
+  const inj = p.inj?.status ? `<span class="tag ${/quest|prob|day/i.test(p.inj.status) ? 'q' : ''}">${esc(p.inj.status.replace(/Questionable/i,'Q').replace(/Doubtful/i,'D').replace(/Probable/i,'P').replace(/Day-To-Day/i,'DTD').slice(0, 3).toUpperCase())}</span>` : '';
+  const sub = [(p.pos || []).slice(0, 2).join('/'), p.team].filter(Boolean).map(esc).join(' · ')
+    + (stat ? ` · D${p.dyn ?? '–'} R${p.ros ?? '–'}` : '')
+    + (o ? ` · <span class="own ${o === 'You' ? 'me' : ''}">${esc(o)}</span>` : '');
+  return `<div class="c nm" data-id="${esc(p.id)}"><b>${esc(p.name)}${inj}</b><small>${sub}</small></div>`;
+}
+function render() {
+  const stat = ui.view === 'stats';
+  const cols = stat ? STAT_COLS : FANT_COLS;
+  const sortKey = ui.sort.key;
+  let rows = visible();
+  const dir = ui.sort.dir;
+  rows.sort((a, b) => {
+    const x = val(a, sortKey), y = val(b, sortKey);
+    if (x == null && y == null) return (a.ros ?? 9999) - (b.ros ?? 9999);
+    if (x == null) return 1; if (y == null) return -1;
+    return (x - y) * dir || (a.ros ?? 9999) - (b.ros ?? 9999);
+  });
+  const t = $('#tbl');
+  t.style.setProperty('--n', cols.length);
+  t.style.setProperty('--w', stat ? '46px' : 'max(40px, calc((100vw - var(--namew)) / 6))');
+  let h = '<div class="grid"><div class="hd nm">Player · ' + rows.length + '</div>';
+  for (const [k, lab] of cols) {
+    const key = stat ? 'st_' + k : k;
+    const on = key === sortKey;
+    h += `<div class="hd ${on ? 'on' : ''}" data-sort="${key}" ${on ? `data-dir="${dir === 1 ? '▲' : '▼'}"` : ''}>${lab}</div>`;
+  }
+  const empty = !rows.length;
+  if (!empty) for (const p of rows) { h += nameCell(p, stat); for (const [k] of cols) h += cell(k, p, stat); }
+  h += '</div>';
+  if (empty) {
+    const needLeague = !league && ['mine', 'rostered'].includes(ui.filter);
+    h += `<div class="hint">${needLeague ? 'Link your Sleeper league to use this filter.<br><button id="linkNow">Link league</button>'
+      : ui.filter === 'mine' && myRid == null ? 'Pick your team in Settings → League.<br><button id="linkNow">Open settings</button>' : 'No players match.'}</div>`;
+  }
+  t.innerHTML = h;
+  document.querySelectorAll('#fcChips .chip').forEach(c => c.classList.toggle('on', c.dataset.k === sortKey));
+}
+function setSort(key) {
+  if (ui.sort.key === key) ui.sort.dir *= -1;
+  else ui.sort = { key, dir: ASC.has(key) ? 1 : -1 };
+  saveUi(); render();
+}
+const saveUi = () => lsSet('hoops.ui', { ...ui, q: '' });
+
+/* ---------------- header / status ---------------- */
+function ago(iso) {
+  if (!iso) return 'never';
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (m < 1) return 'just now'; if (m < 60) return m + 'm ago';
+  if (m < 2880) return Math.round(m / 60) + 'h ago';
+  return Math.round(m / 1440) + 'd ago';
+}
+function renderStatus() {
+  const el = $('#status');
+  if (!meta) { el.innerHTML = '<span><span class="dot fail"></span>No data yet — run <code>make update</code></span>'; return; }
+  const st = meta.stats || {};
+  const stale = iso => iso && (Date.now() - new Date(iso)) > 36 * 3600e3;
+  const sd = st.last_game_date ? new Date(st.last_game_date + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' }) : null;
+  const stCls = !st.ok ? 'fail' : stale(st.updated_at) ? 'stale' : 'ok';
+  const srcs = meta.sources || [];
+  const okN = srcs.filter(s => s.ok).length;
+  const rkTimes = srcs.map(s => s.fetched_at).filter(Boolean).sort();
+  const rkCls = okN === srcs.length ? (stale(rkTimes[0]) ? 'stale' : 'ok') : okN ? 'stale' : 'fail';
+  el.innerHTML = `<span><span class="dot ${stCls}"></span>Stats ${sd ? 'thru ' + sd : 'unavailable'} · ${ago(st.updated_at)}</span>`
+    + `<span><span class="dot ${rkCls}"></span>Rankings ${okN}/${srcs.length} sources · ${ago(rkTimes[0])}</span>`
+    + (league ? `<span><span class="dot ok"></span>${esc(league.name)}</span>` : '');
+}
+
+/* ---------------- sheet ---------------- */
+function openSheet(html) {
+  $('#sheet').innerHTML = '<button class="x" aria-label="Close">×</button>' + html;
+  $('#sheet').classList.add('show'); $('#ov').classList.add('show'); $('#sheet').scrollTop = 0;
+}
+function closeSheet() { $('#sheet').classList.remove('show'); $('#ov').classList.remove('show'); }
+
+function showPlayer(id) {
+  const p = players.find(x => x.id === id); if (!p) return;
+  const o = ownerLabel(p);
+  const srcRow = (type) => (meta?.sources || []).filter(s => s.type === type).map(s => {
+    const r = p.rk?.[s.id];
+    return `<div class="src"><span>${esc(s.label)}${s.ok ? '' : ' <span class="dim">(stale)</span>'}</span><b>${r ?? '—'}</b></div>`;
+  }).join('');
+  const inj = p.inj ? `<div class="note" style="color:var(--warn)">⚠ ${esc([p.inj.status, p.inj.part].filter(Boolean).join(' – '))}${p.inj.notes ? ' · ' + esc(p.inj.notes) : ''}</div>` : '';
+  const games = p.g.slice(-15).reverse();
+  openSheet(`<h2>${esc(p.name)}</h2>
+    <div class="badges"><span class="badge">${esc(p.team || 'FA')}</span><span class="badge">${esc((p.pos || []).join('/') || '—')}</span>
+      ${p.age ? `<span class="badge">Age ${esc(p.age)}</span>` : ''}
+      <span class="badge">${o ? (o === 'You' ? '✅ Your team' : 'Owner: ' + esc(o)) : league ? 'Available' : 'No league linked'}</span></div>
+    ${inj}
+    <div class="kv"><div><b>${p.dyn ?? '—'}</b><small>Dynasty</small></div><div><b>${p.ros ?? '—'}</b><small>ROS</small></div>
+      <div><b>${fmt(p.s?.fppg)}</b><small>FPPG</small></div><div><b>${fmt(p.l5?.fppg)}</b><small>L5 FPPG</small></div></div>
+    <h3>Dynasty ranking${p.dyn_avg ? ' · avg ' + p.dyn_avg : ''}</h3>${srcRow('dynasty') || '<div class="note">No data</div>'}
+    <h3>Rest-of-season ranking${p.ros_avg ? ' · avg ' + p.ros_avg : ''}</h3>${srcRow('ros') || '<div class="note">No data</div>'}
+    <h3>Recent games</h3>
+    ${games.length ? `<div class="logs"><table><tr><th>Date</th><th>Opp</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>TO</th><th>FP</th></tr>
+      ${games.map(({ l, fp }) => `<tr><td>${esc(l[IX.date].slice(5))}</td><td>${esc(l[IX.opp])}</td><td>${Math.round(l[IX.min])}</td><td>${l[IX.pts]}</td><td>${l[IX.oreb] + l[IX.dreb]}</td><td>${l[IX.ast]}</td><td>${l[IX.stl]}</td><td>${l[IX.blk]}</td><td>${l[IX.to]}</td><td class="fp">${fmt(fp)}</td></tr>`).join('')}</table></div>`
+      : '<div class="note">No game logs yet (stats not downloaded, or no games played).</div>'}`);
+}
+
+function showSettings(msg) {
+  const lg = league;
+  const sources = (meta?.sources || []).map(s => `<div class="src"><span><span class="dot ${s.ok ? 'ok' : 'fail'}"></span>${esc(s.label)} <span class="dim">${s.type === 'ros' ? 'ROS' : 'Dynasty'} · ${s.count}</span></span>
+    <span class="dim">${s.ok ? ago(s.fetched_at) : 'failed · kept ' + ago(s.fetched_at)}</span></div>${s.ok ? '' : `<div class="note err">${esc(s.error)}</div>`}`).join('');
+  const st = meta?.stats;
+  openSheet(`<h2>Settings</h2>
+    <h3>Sleeper league</h3>
+    <div class="row2"><input class="sheet-in" id="lgUrl" placeholder="Paste Sleeper league URL" value="${lg ? esc('https://sleeper.com/leagues/' + lg.id) : ''}" inputmode="url" autocapitalize="off">
+      <button class="btn" id="lgLink">${lg ? 'Reload' : 'Link'}</button></div>
+    <div class="note ${msg?.lg?.err ? 'err' : ''}" id="lgMsg">${esc(msg?.lg?.text || (lg ? `${lg.name} · ${lg.teams.length} teams · loaded ${ago(new Date(lg.fetchedAt).toISOString())}` : 'Players load straight from api.sleeper.app in your browser.'))}</div>
+    ${lg ? `<div class="field" style="grid-template-columns:1fr"><select class="sheet-in" id="myTeam"><option value="">— Which team is yours? —</option>
+      ${lg.teams.map(t => `<option value="${t.rid}" ${t.rid === myRid ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>
+      <button class="btn sec" id="lgUnlink">Unlink league</button>` : ''}
+    <h3>Scoring (fantasy points)</h3>
+    <div class="row2"><button class="btn" id="imp" ${lg ? '' : 'disabled style="opacity:.5"'}>Import from my Sleeper league</button><button class="btn sec" id="reset">Reset</button></div>
+    <div class="note ${msg?.imp?.err ? 'err' : msg?.imp ? 'good' : ''}" id="impMsg">${msg?.imp?.html || ''}</div>
+    <div class="two">${SCORING.map(([k, lab]) => `<label class="field"><span>${lab}</span><input type="number" step="any" inputmode="decimal" data-k="${k}" value="${S[k]}"></label>`).join('')}</div>
+    <label class="tog"><input type="checkbox" data-t="tdAlsoDd" ${S.tdAlsoDd ? 'checked' : ''}><span>Triple-double also earns the double-double bonus</span></label>
+    <label class="tog"><input type="checkbox" data-t="b50Also40" ${S.b50Also40 ? 'checked' : ''}><span>50+ points also earns the 40+ bonus</span></label>
+    <h3>Data</h3>
+    <div class="src"><span><span class="dot ${st?.ok ? 'ok' : 'fail'}"></span>NBA box scores <span class="dim">${st ? st.games + ' games' : ''}</span></span><span class="dim">${st?.last_game_date ? 'thru ' + esc(st.last_game_date) : '—'}</span></div>
+    ${st && !st.ok ? `<div class="note err">${esc(st.error)}</div>` : ''}${sources}
+    <div class="note">Refresh by running <code>make update</code>, then reload.</div>`);
+}
+
+/* ---------------- Sleeper scoring import ---------------- */
+function importScoring() {
+  const sc = league.scoring || {};
+  const known = new Map(); SCORING.forEach(([k,,,keys]) => keys.forEach(sk => known.set(sk, k)));
+  const next = { ...S }; SCORING.forEach(([k]) => next[k] = 0);   // anything the league doesn't score is 0
+  const unmapped = [];
+  for (const [sk, v] of Object.entries(sc)) {
+    if (known.has(sk)) next[known.get(sk)] = Number(v) || 0;
+    else if (Number(v)) unmapped.push(`${sk} (${v})`);
+  }
+  S = next; lsSet('hoops.scoring', S); compute(); render();
+  const n = [...known.keys()].filter(k => k in sc).length;
+  return { html: `Imported ${n} scoring values from “${esc(league.name)}”.` +
+    (unmapped.length ? `<br><b>Couldn’t map:</b> ${esc(unmapped.join(', '))}` : '<br>All scoring keys were mapped.') +
+    '<br>Double-double / 50+ toggles are unchanged — set them below.' };
+}
+
+/* ---------------- events ---------------- */
+document.addEventListener('click', async e => {
+  const t = e.target;
+  if (t.closest('#ov') && t === $('#ov') || t.closest('.x')) return closeSheet();
+  const hd = t.closest('[data-sort]'); if (hd) return setSort(hd.dataset.sort);
+  const c = t.closest('[data-id]'); if (c && $('#tbl').contains(c)) return showPlayer(c.dataset.id);
+  if (t.id === 'linkNow') return showSettings();
+  if (t.closest('#gear')) return showSettings();
+  const v = t.closest('#viewSeg [data-v]');
+  if (v) { ui.view = v.dataset.v; if (ui.view === 'stats' && !ui.sort.key) ui.sort = { key: 'ros', dir: 1 }; return sync(); }
+  const f = t.closest('#filterSeg [data-f]'); if (f) { ui.filter = f.dataset.f; return sync(); }
+  const w = t.closest('#winSeg [data-w]'); if (w) { ui.win = w.dataset.w; return sync(); }
+  const pc = t.closest('#posChips [data-p]');
+  if (pc) { const p = pc.dataset.p; ui.pos = ui.pos.includes(p) ? ui.pos.filter(x => x !== p) : [...ui.pos, p]; return sync(); }
+  const fc = t.closest('#fcChips [data-k]'); if (fc) return setSort(fc.dataset.k);
+  if (t.id === 'lgLink') {
+    const id = leagueIdFrom($('#lgUrl').value);
+    if (!id) return showSettings({ lg: { err: true, text: 'Couldn’t find a league ID in that. Paste the league URL from Sleeper.' } });
+    $('#lgMsg').textContent = 'Loading…';
+    try {
+      const nl = await fetchLeague(id);
+      if (!league || league.id !== id) myRid = null;
+      league = nl; lsSet('hoops.league', league); lsSet('hoops.myRid', myRid);
+      renderStatus(); render(); showSettings({ lg: { text: `Linked “${nl.name}”. Now pick your team.` } });
+    } catch (err) { $('#lgMsg').className = 'note err'; $('#lgMsg').textContent = 'Failed: ' + err.message; }
+  }
+  if (t.id === 'lgUnlink') { league = null; myRid = null; localStorage.removeItem('hoops.league'); localStorage.removeItem('hoops.myRid'); ui.filter = 'all'; renderStatus(); sync(); showSettings(); }
+  if (t.id === 'imp' && league) showSettings({ imp: importScoring() });
+  if (t.id === 'reset') { S = { ...DEFAULTS }; lsSet('hoops.scoring', S); compute(); render(); showSettings(); }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.k) { S[t.dataset.k] = Number(t.value) || 0; lsSet('hoops.scoring', S); compute(); render(); }
+  else if (t.dataset.t) { S[t.dataset.t] = t.checked; lsSet('hoops.scoring', S); compute(); render(); }
+  else if (t.id === 'myTeam') { myRid = t.value ? Number(t.value) : null; lsSet('hoops.myRid', myRid); render(); }
+});
+$('#q').addEventListener('input', e => { ui.q = e.target.value; render(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+
+function sync() {
+  const stat = ui.view === 'stats';
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === ui.view));
+  document.querySelectorAll('#filterSeg button').forEach(b => b.classList.toggle('on', b.dataset.f === ui.filter));
+  document.querySelectorAll('#winSeg button').forEach(b => b.classList.toggle('on', b.dataset.w === ui.win));
+  document.querySelectorAll('#posChips .chip').forEach(b => b.classList.toggle('on', ui.pos.includes(b.dataset.p)));
+  $('#statsCtl').hidden = !stat;
+  // keep the active sort valid for the current view
+  const valid = stat ? [...STAT_COLS.map(c => 'st_' + c[0]), ...FANT_COLS.map(c => c[0])] : FANT_COLS.map(c => c[0]);
+  if (!valid.includes(ui.sort.key)) ui.sort = { key: 'ros', dir: 1 };
+  saveUi(); render();
+}
+
+/* ---------------- boot ---------------- */
+async function boot() {
+  $('#posChips').innerHTML = ['PG', 'SG', 'SF', 'PF', 'C'].map(p => `<button class="chip" data-p="${p}">${p}</button>`).join('');
+  $('#fcChips').innerHTML = FANT_COLS.map(([k, l]) => `<button class="chip" data-k="${k}">${l}</button>`).join('');
+  try {
+    const [pl, mt] = await Promise.all(['data/players.json', 'data/meta.json'].map(u => fetch(u, { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); })));
+    players = pl; meta = mt; meta.log_fields.forEach((f, i) => IX[f] = i);
+    compute();
+  } catch (err) {
+    $('#tbl').innerHTML = `<div class="hint">No data found.<br>Run <code>make update</code> in the project folder, then reload.<br><small>${esc(err.message)}</small></div>`;
+    renderStatus(); return;
+  }
+  renderStatus(); sync();
+  if (league) fetchLeague(league.id).then(nl => { league = nl; lsSet('hoops.league', nl); renderStatus(); render(); }).catch(() => {});
+}
+boot();
+</script>
+</body>
+</html>
