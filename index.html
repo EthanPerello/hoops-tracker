@@ -49,7 +49,9 @@ header h1 span{color:var(--accent)}
 .hint{padding:30px 20px;text-align:center;color:var(--muted)}
 .hint button{margin-top:10px;background:var(--accent);color:#06211e;padding:8px 14px;border-radius:10px;font-weight:600}
 .sortrow{padding:0 12px 8px;display:flex;gap:6px;align-items:center;overflow-x:auto;scrollbar-width:none}
-.sortrow[hidden]{display:none}
+.frow{display:flex;align-items:center;gap:8px;padding:0 12px 8px}
+.frow .chips{padding:0;flex:1;min-width:0}
+.frow .seg button{padding:5px 9px}
 .sortrow span{font-size:11px;color:var(--muted);text-transform:uppercase}
 /* sheet */
 #ov{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:10}
@@ -97,11 +99,8 @@ td.fp{color:var(--accent);font-weight:600}
 <div class="seg full" id="filterSeg">
   <button data-f="all" class="on">All</button><button data-f="mine">My players</button><button data-f="rostered">Rostered</button><button data-f="avail">Available</button>
 </div>
-<div class="chips" id="posChips"></div>
-<div class="sortrow" id="statsCtl" hidden>
-  <div class="seg" id="winSeg"><button data-w="season" class="on">Season</button><button data-w="l5">Last 5</button></div>
-  <span>Sort</span><div class="chips" id="fcChips" style="padding:0"></div>
-</div>
+<div class="frow"><div class="chips" id="posChips"></div>
+  <div class="seg" id="winSeg"><button data-w="season" class="on">Season</button><button data-w="l5">Last 5</button></div></div>
 <div class="tbl" id="tbl"></div>
 <div id="ov"></div>
 <div id="sheet" role="dialog" aria-modal="true"></div>
@@ -140,8 +139,10 @@ let league = lsGet('hoops.league', null);   // {id,name,teams:[{rid,name}],owner
 let myRid = lsGet('hoops.myRid', null);
 const ui = Object.assign({ view:'fantasy', win:'season', filter:'all', pos:[], q:'', sort:{key:'ros',dir:1} }, lsGet('hoops.ui', {}));
 ui.q = '';
-const FANT_COLS = [['dyn','DYN'],['ros','ROS'],['fppg','FPPG'],['mpg','MPG'],['l5fp','L5 FP'],['l5mpg','L5 MPG']];
-const STAT_COLS = [['gp','GP'],['min','MIN'],['pts','PTS'],['reb','REB'],['ast','AST'],['stl','STL'],['blk','BLK'],['to','TO'],['tpm','3PM'],['fgp','FG%'],['ftp','FT%'],['fppg','FPPG']];
+// Keys shared by both views (dyn, ros, fppg, mpg) keep the sort when switching views.
+// fppg/mpg and every st_* stat follow the Season / Last 5 toggle.
+const FANT_COLS = [['dyn','DYN'],['ros','ROS'],['fppg','FPPG'],['mpg','MPG']];
+const STAT_COLS = [['dyn','DYN'],['ros','ROS'],['st_gp','GP'],['mpg','MIN'],['st_pts','PTS'],['st_reb','REB'],['st_ast','AST'],['st_stl','STL'],['st_blk','BLK'],['st_to','TO'],['st_tpm','3PM'],['st_fgp','FG%'],['st_ftp','FT%'],['fppg','FPPG']];
 const ASC = new Set(['dyn','ros']);
 
 /* ---------------- fantasy points ---------------- */
@@ -206,11 +207,11 @@ function leagueIdFrom(text) {
 function val(p, k) {
   switch (k) {
     case 'dyn': return p.dyn; case 'ros': return p.ros;
-    case 'fppg': return p.s?.fppg; case 'mpg': return p.s?.min;
-    case 'l5fp': return p.l5?.fppg; case 'l5mpg': return p.l5?.min;
+    case 'fppg': return win(p)?.fppg; case 'mpg': return win(p)?.min;
   }
-  if (k.startsWith('st_')) return (ui.win === 'l5' ? p.l5 : p.s)?.[k.slice(3)];
+  if (k.startsWith('st_')) return win(p)?.[k.slice(3)];
 }
+const win = p => ui.win === 'l5' ? p.l5 : p.s;
 function visible() {
   const q = fold(ui.q).trim();
   return players.filter(p => {
@@ -224,19 +225,16 @@ function visible() {
 }
 function rankCls(v) { return v == null ? 'dim' : v <= 12 ? 'r1' : v <= 36 ? 'r2' : v <= 100 ? 'r3' : 'r4'; }
 function cell(k, p, stat) {
-  if (stat) {
-    const v = val(p, 'st_' + k);
-    return `<div class="c" data-id="${esc(p.id)}">${k === 'gp' ? fmt(v, 0) : k === 'fppg' ? `<b>${fmt(v)}</b>` : fmt(v)}</div>`;
-  }
-  const v = val(p, k);
-  if (k === 'dyn' || k === 'ros') return `<div class="c ${rankCls(v)}" data-id="${esc(p.id)}">${v ?? '—'}</div>`;
-  return `<div class="c ${k === 'fppg' || k === 'l5fp' ? '' : 'dim'}" data-id="${esc(p.id)}">${fmt(v)}</div>`;
+  const v = val(p, k), id = esc(p.id);
+  if (k === 'dyn' || k === 'ros') return `<div class="c ${rankCls(v)}" data-id="${id}">${v ?? '—'}</div>`;
+  if (k === 'fppg') return `<div class="c" data-id="${id}"><b>${fmt(v)}</b></div>`;
+  if (k === 'mpg' && !stat) return `<div class="c dim" data-id="${id}">${fmt(v)}</div>`;
+  return `<div class="c" data-id="${id}">${fmt(v, k === 'st_gp' ? 0 : 1)}</div>`;
 }
 function nameCell(p, stat) {
   const o = ownerLabel(p);
   const inj = p.inj?.status ? `<span class="tag ${/quest|prob|day/i.test(p.inj.status) ? 'q' : ''}">${esc(p.inj.status.replace(/Questionable/i,'Q').replace(/Doubtful/i,'D').replace(/Probable/i,'P').replace(/Day-To-Day/i,'DTD').slice(0, 3).toUpperCase())}</span>` : '';
   const sub = [(p.pos || []).slice(0, 2).join('/'), p.team].filter(Boolean).map(esc).join(' · ')
-    + (stat ? ` · D${p.dyn ?? '–'} R${p.ros ?? '–'}` : '')
     + (o ? ` · <span class="own ${o === 'You' ? 'me' : ''}">${esc(o)}</span>` : '');
   return `<div class="c nm" data-id="${esc(p.id)}"><b>${esc(p.name)}${inj}</b><small>${sub}</small></div>`;
 }
@@ -254,12 +252,12 @@ function render() {
   });
   const t = $('#tbl');
   t.style.setProperty('--n', cols.length);
-  t.style.setProperty('--w', stat ? '46px' : 'max(40px, calc((100vw - var(--namew)) / 6))');
+  t.style.setProperty('--w', stat ? '46px' : '58px');
+  t.style.setProperty('--namew', stat ? '128px' : 'max(128px, calc(100vw - 232px))');
   let h = '<div class="grid"><div class="hd nm">Player · ' + rows.length + '</div>';
   for (const [k, lab] of cols) {
-    const key = stat ? 'st_' + k : k;
-    const on = key === sortKey;
-    h += `<div class="hd ${on ? 'on' : ''}" data-sort="${key}" ${on ? `data-dir="${dir === 1 ? '▲' : '▼'}"` : ''}>${lab}</div>`;
+    const on = k === sortKey;
+    h += `<div class="hd ${on ? 'on' : ''}" data-sort="${k}" ${on ? `data-dir="${dir === 1 ? '▲' : '▼'}"` : ''}>${lab}</div>`;
   }
   const empty = !rows.length;
   if (!empty) for (const p of rows) { h += nameCell(p, stat); for (const [k] of cols) h += cell(k, p, stat); }
@@ -270,7 +268,6 @@ function render() {
       : ui.filter === 'mine' && myRid == null ? 'Pick your team in Settings → League.<br><button id="linkNow">Open settings</button>' : 'No players match.'}</div>`;
   }
   t.innerHTML = h;
-  document.querySelectorAll('#fcChips .chip').forEach(c => c.classList.toggle('on', c.dataset.k === sortKey));
 }
 function setSort(key) {
   if (ui.sort.key === key) ui.sort.dir *= -1;
@@ -390,7 +387,6 @@ document.addEventListener('click', async e => {
   const w = t.closest('#winSeg [data-w]'); if (w) { ui.win = w.dataset.w; return sync(); }
   const pc = t.closest('#posChips [data-p]');
   if (pc) { const p = pc.dataset.p; ui.pos = ui.pos.includes(p) ? ui.pos.filter(x => x !== p) : [...ui.pos, p]; return sync(); }
-  const fc = t.closest('#fcChips [data-k]'); if (fc) return setSort(fc.dataset.k);
   if (t.id === 'lgLink') {
     const id = leagueIdFrom($('#lgUrl').value);
     if (!id) return showSettings({ lg: { err: true, text: 'Couldn’t find a league ID in that. Paste the league URL from Sleeper.' } });
@@ -421,9 +417,8 @@ function sync() {
   document.querySelectorAll('#filterSeg button').forEach(b => b.classList.toggle('on', b.dataset.f === ui.filter));
   document.querySelectorAll('#winSeg button').forEach(b => b.classList.toggle('on', b.dataset.w === ui.win));
   document.querySelectorAll('#posChips .chip').forEach(b => b.classList.toggle('on', ui.pos.includes(b.dataset.p)));
-  $('#statsCtl').hidden = !stat;
   // keep the active sort valid for the current view
-  const valid = stat ? [...STAT_COLS.map(c => 'st_' + c[0]), ...FANT_COLS.map(c => c[0])] : FANT_COLS.map(c => c[0]);
+  const valid = (stat ? STAT_COLS : FANT_COLS).map(c => c[0]);
   if (!valid.includes(ui.sort.key)) ui.sort = { key: 'ros', dir: 1 };
   saveUi(); render();
 }
@@ -431,7 +426,6 @@ function sync() {
 /* ---------------- boot ---------------- */
 async function boot() {
   $('#posChips').innerHTML = ['PG', 'SG', 'SF', 'PF', 'C'].map(p => `<button class="chip" data-p="${p}">${p}</button>`).join('');
-  $('#fcChips').innerHTML = FANT_COLS.map(([k, l]) => `<button class="chip" data-k="${k}">${l}</button>`).join('');
   try {
     const [pl, mt] = await Promise.all(['data/players.json', 'data/meta.json'].map(u => fetch(u, { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); })));
     players = pl; meta = mt; meta.log_fields.forEach((f, i) => IX[f] = i);
