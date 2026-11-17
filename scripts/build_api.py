@@ -159,7 +159,7 @@ def build_league(lg, rosters, users):
 
 
 # ----------------------------------------------------------------- main build
-def build(out, league_id=None, site_url=""):
+def build(out, league_id=None, site_url="", mcp_url=""):
     players = read_json(DATA / "players.json")
     meta = read_json(DATA / "meta.json")
     fields = meta["log_fields"]
@@ -362,7 +362,9 @@ def build(out, league_id=None, site_url=""):
         "description": "Static, read-only JSON for an NBA fantasy basketball rankings site (Sleeper points league): "
                        "consensus dynasty and rest-of-season rankings (FantasyPros, Hashtag Basketball), real per-game "
                        "stats from box scores, fantasy points, injuries and Sleeper league rosters. No key needed; CORS open.",
-        "site": site_url or None, "updated": "About 3 times a day (6am, 12pm, 6pm US Eastern).",
+        "site": site_url or None,
+        "mcp_server": {"url": mcp_url, "transport": "streamable-http", "auth": "none"} if mcp_url else None,
+        "updated": "About 3 times a day (6am, 12pm, 6pm US Eastern).",
         "freshness": freshness, "league_configured": bool(league),
         "league_name": league.get("name") if league else None,
         "scoring": scoring_info,
@@ -370,7 +372,7 @@ def build(out, league_id=None, site_url=""):
         "glossary": glossary,
     }, pretty=True)
     write_json(api / "openapi.json", openapi(site_url), pretty=True)
-    (out / "llms.txt").write_text(llms_txt(site_url, freshness, league, scoring_source))
+    (out / "llms.txt").write_text(llms_txt(site_url, freshness, league, scoring_source, mcp_url))
     return {"players": len(summaries), "league": bool(league), "league_error": league_err}
 
 
@@ -409,7 +411,7 @@ def openapi(site_url):
     }
 
 
-def llms_txt(site_url, fr, league, scoring_source):
+def llms_txt(site_url, fr, league, scoring_source, mcp_url=""):
     u = (site_url + "/") if site_url else ""
     srcs = ", ".join(f"{s['label']} {s['type']}{'' if s['ok'] else ' (stale)'}" for s in fr["ranking_sources"])
     return f"""# Hoops Tracker
@@ -419,7 +421,10 @@ def llms_txt(site_url, fr, league, scoring_source):
 > Everything is available as static JSON — no scraping, no key, CORS open. Updated about 3 times a day.
 
 The web app ({u or 'index.html'}) renders with JavaScript; use the JSON below instead of the HTML.
-
+{f"""
+MCP server (remote, no auth, Streamable HTTP): {mcp_url}
+Tools: get_overview, search_players, get_player, get_rankings, get_league (also reads any Sleeper league live), search, fetch.
+""" if mcp_url else ""}
 Current data: stats through {fr['stats_through'] or 'n/a'}; rankings: {srcs}; scoring: {scoring_source};
 league: {league.get('name') if league else 'not configured'}.
 
@@ -455,6 +460,7 @@ def main():
         owner, name = repo.split("/")
         default_url = f"https://{owner.lower()}.github.io/{name}"
     ap.add_argument("--site-url", default=os.environ.get("SITE_URL") or default_url)
+    ap.add_argument("--mcp-url", default=os.environ.get("MCP_URL") or "", help="public URL of the MCP server, if deployed")
     a = ap.parse_args()
     out = (ROOT / a.out) if not Path(a.out).is_absolute() else Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -462,7 +468,7 @@ def main():
     (out / "data").mkdir(exist_ok=True)
     for f in ("players.json", "meta.json"):
         shutil.copy(DATA / f, out / "data" / f)
-    res = build(out, a.league, a.site_url)
+    res = build(out, a.league, a.site_url, a.mcp_url)
     print(f"API: {res['players']} players -> {out / 'api'}"
           + (" (with league)" if res["league"] else " (no league configured)" if not res["league_error"] else
              f" (league FAILED: {res['league_error']})"))

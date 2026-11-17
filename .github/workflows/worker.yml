@@ -1,0 +1,28 @@
+name: Deploy MCP server (Cloudflare Worker)
+
+# Deploys worker/ to Cloudflare when it changes. Needs two repository secrets:
+#   CLOUDFLARE_API_TOKEN   (Cloudflare dashboard -> My Profile -> API Tokens -> "Edit Cloudflare Workers" template)
+#   CLOUDFLARE_ACCOUNT_ID  (Cloudflare dashboard -> Workers & Pages -> Account ID)
+# Without them the job is skipped. Data updates don't need a redeploy: the Worker reads the Pages JSON live.
+on:
+  push:
+    branches: [claude/serene-turing-6exmqg]
+    paths: ["worker/**", ".github/workflows/worker.yml"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HAS_TOKEN == 'true'
+      - uses: cloudflare/wrangler-action@v3
+        if: env.HAS_TOKEN == 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+      - if: env.HAS_TOKEN != 'true'
+        run: echo "::notice::CLOUDFLARE_API_TOKEN secret not set; skipping MCP server deploy."

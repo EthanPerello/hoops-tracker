@@ -38,6 +38,7 @@ jobs:
         env:
           SLEEPER_LEAGUE_ID: ${{ vars.SLEEPER_LEAGUE_ID }}   # optional repo variable: publishes api/league.json + owners
           SITE_URL: ${{ vars.SITE_URL }}                     # optional; defaults to https://<owner>.github.io/<repo>
+          MCP_URL: ${{ vars.MCP_URL }}                       # optional: the deployed Worker's /mcp URL, advertised in llms.txt
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

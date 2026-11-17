@@ -1,0 +1,8 @@
+name = "hoops-tracker-mcp"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+# Base URL of the GitHub Pages site whose /api/*.json this server reads.
+DATA_URL = "https://ethanperello.github.io/hoops-tracker"

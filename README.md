@@ -35,15 +35,26 @@ Fantasy points are already calculated, so agents don't need to implement scoring
 Variables). The workflow then publishes `api/league.json`, adds `fantasy_team` to every player and calculates fantasy points with the
 league's scoring. Without it, the API uses the default scoring and `league.json` explains how to set it up.
 
-**How each agent connects:**
-- *Any agent that can browse* (ChatGPT, Claude, …): give it `https://<owner>.github.io/hoops-tracker/llms.txt`.
-- *ChatGPT custom GPT:* Configure → Actions → Import from URL → `…/api/openapi.json` (no auth).
-- *Claude Code / Claude Desktop / Cursor (MCP):* `mcp/server.py` is a stdio MCP server (standard library only) with
-  tools `get_overview`, `search_players`, `get_player`, `get_rankings` and `get_league`. It filters on request, so agents
-  don't load whole files.
-  - Claude Code: `claude mcp add hoops -- python3 /path/to/hoops-tracker/mcp/server.py`
-  - Claude Desktop (`claude_desktop_config.json`): `{"mcpServers": {"hoops": {"command": "python3", "args": ["/path/to/hoops-tracker/mcp/server.py"]}}}`
-  - It reads the live site by default. Set `HOOPS_SITE_DIR=/path/to/_site` to use a local build, or `HOOPS_API_URL` for another host.
+**Remote MCP server** (`worker/`, a Cloudflare Worker, free tier): lets ChatGPT, Claude and other MCP clients connect
+with just a URL and query the data with tools. Those tools are `get_overview`, `search_players`, `get_player`, `get_rankings`
+and `get_league` (it also reads any Sleeper league live when given a `league_id`), plus `search`/`fetch` in the format
+ChatGPT connectors expect. It reads the Pages JSON live, so data updates never need a redeploy.
+
+Deploy once, from your computer (needs Node.js and a free Cloudflare account):
+```
+cd worker && npm install && npx wrangler login && npx wrangler deploy
+```
+This prints the URL, e.g. `https://hoops-tracker-mcp.<your-subdomain>.workers.dev`. The MCP endpoint is that URL plus `/mcp`.
+Optionally add it as the repo variable `MCP_URL` so `llms.txt` and `api/index.json` advertise it.
+To redeploy from GitHub Actions when `worker/` changes, add the secrets `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` (see `.github/workflows/worker.yml`).
+
+**Connecting agents** (MCP URL = `https://hoops-tracker-mcp.<subdomain>.workers.dev/mcp`, no authentication):
+- *ChatGPT:* Settings → Apps & Connectors → Advanced → turn on Developer mode → Create. Paste the MCP URL and choose "No authentication".
+- *Claude (claude.ai / Desktop / mobile):* Settings → Connectors → Add custom connector → paste the MCP URL.
+- *Claude Code:* `claude mcp add --transport http hoops <MCP URL>`
+- *Anything that can browse:* `https://<owner>.github.io/hoops-tracker/llms.txt`. For a ChatGPT custom GPT: Actions → Import
+  from URL → `…/api/openapi.json`.
 
 Locally: `make api` builds the full site into `_site/`, `make serve-site` serves it, `make test` runs the tests.
 
@@ -55,7 +66,7 @@ Locally: `make api` builds the full site into `_site/`, `make serve-site` serves
 | `scripts/aliases.json` | Optional, create it yourself: extra name → Sleeper-name fixes. |
 | `index.html` | The whole app (HTML/CSS/JS, no build step). Scoring logic is `fpOf()`; Sleeper scoring-key mapping is the `SCORING` table. |
 | `scripts/build_api.py` | Builds `_site/`: the app plus the agent API (`api/`, `llms.txt`, `openapi.json`). Its `SCORING` table mirrors the one in `index.html`; keep the two in sync. |
-| `mcp/server.py` | Stdio MCP server over the published API. |
+| `worker/` | Remote MCP server (Cloudflare Worker): `src/index.js`, `wrangler.toml`. Local test: `cd worker && npx wrangler dev`. |
 | `tests/` | Offline tests: `make test` |
 | `data/` (git-ignored) | `players.json`, `meta.json` (read by the app), `sources.json` (last good rankings), `box/` (cached box scores), `cache/` (Sleeper player list). |
 
