@@ -15,6 +15,38 @@ make serve      # then open http://localhost:8000
 - **Matching:** names are matched to Sleeper IDs; unmatched players are printed. Add fixes to `scripts/aliases.json`, e.g. `{"Carlton Carrington": "Bub Carrington"}`.
 - **App:** `index.html` reads `data/players.json` + `data/meta.json`. League link, team choice and scoring live in browser localStorage.
 
+## For AI agents (ChatGPT, Claude, …)
+
+Each deploy also publishes a static, read-only JSON API next to the app. It needs no key and no scraping (CORS open).
+Fantasy points are already calculated, so agents don't need to implement scoring. It's built by `scripts/build_api.py`.
+
+| URL (under the Pages site) | What |
+|---|---|
+| `llms.txt` | Plain-language guide for agents. Point an agent here first. |
+| `api/index.json` | Catalog: freshness, ranking-source status, scoring used, field glossary |
+| `api/rankings/ros.json`, `api/rankings/dynasty.json` | Consensus rankings with each source's rank, FPPG, injury, fantasy team |
+| `api/league.json` | Sleeper league: scoring, teams + records, rosters (ranks, FPPG, lineup slot), best available |
+| `api/players.json` | Every player in full (large, ~380 KB) |
+| `api/players/{id}.json` | One player with every game log and fantasy points per game (`id` = Sleeper player id) |
+| `api/game_logs.json` | Bulk box-score lines, compact columns |
+| `api/openapi.json` | OpenAPI 3.1 spec |
+
+**Sleeper league:** set the repository variable `SLEEPER_LEAGUE_ID` (Settings → Secrets and variables → Actions →
+Variables). The workflow then publishes `api/league.json`, adds `fantasy_team` to every player and calculates fantasy points with the
+league's scoring. Without it, the API uses the default scoring and `league.json` explains how to set it up.
+
+**How each agent connects:**
+- *Any agent that can browse* (ChatGPT, Claude, …): give it `https://<owner>.github.io/hoops-tracker/llms.txt`.
+- *ChatGPT custom GPT:* Configure → Actions → Import from URL → `…/api/openapi.json` (no auth).
+- *Claude Code / Claude Desktop / Cursor (MCP):* `mcp/server.py` is a stdio MCP server (standard library only) with
+  tools `get_overview`, `search_players`, `get_player`, `get_rankings` and `get_league`. It filters on request, so agents
+  don't load whole files.
+  - Claude Code: `claude mcp add hoops -- python3 /path/to/hoops-tracker/mcp/server.py`
+  - Claude Desktop (`claude_desktop_config.json`): `{"mcpServers": {"hoops": {"command": "python3", "args": ["/path/to/hoops-tracker/mcp/server.py"]}}}`
+  - It reads the live site by default. Set `HOOPS_SITE_DIR=/path/to/_site` to use a local build, or `HOOPS_API_URL` for another host.
+
+Locally: `make api` builds the full site into `_site/`, `make serve-site` serves it, `make test` runs the tests.
+
 ## Files
 
 | Path | What |
@@ -22,7 +54,9 @@ make serve      # then open http://localhost:8000
 | `scripts/update.py` | Data refresh. Sources are listed in `SOURCES`; parsers are `parse_fantasypros`, `parse_hb_dynasty`, `parse_hb_table`. |
 | `scripts/aliases.json` | Optional, create it yourself: extra name → Sleeper-name fixes. |
 | `index.html` | The whole app (HTML/CSS/JS, no build step). Scoring logic is `fpOf()`; Sleeper scoring-key mapping is the `SCORING` table. |
-| `tests/test_update.py` | Offline tests: `python3 -m unittest discover tests` |
+| `scripts/build_api.py` | Builds `_site/`: the app plus the agent API (`api/`, `llms.txt`, `openapi.json`). Its `SCORING` table mirrors the one in `index.html`; keep the two in sync. |
+| `mcp/server.py` | Stdio MCP server over the published API. |
+| `tests/` | Offline tests: `make test` |
 | `data/` (git-ignored) | `players.json`, `meta.json` (read by the app), `sources.json` (last good rankings), `box/` (cached box scores), `cache/` (Sleeper player list). |
 
 ## Status / notes for whoever picks this up

@@ -33,11 +33,11 @@ jobs:
           key: box-${{ github.run_id }}
           restore-keys: box-
       - run: python3 scripts/update.py
-      - name: Assemble site
-        run: |
-          mkdir -p _site/data
-          cp index.html _site/
-          cp data/players.json data/meta.json _site/data/
+      - name: Build site + agent API (api/, llms.txt, openapi.json)
+        run: python3 scripts/build_api.py _site
+        env:
+          SLEEPER_LEAGUE_ID: ${{ vars.SLEEPER_LEAGUE_ID }}   # optional repo variable: publishes api/league.json + owners
+          SITE_URL: ${{ vars.SITE_URL }}                     # optional; defaults to https://<owner>.github.io/<repo>
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

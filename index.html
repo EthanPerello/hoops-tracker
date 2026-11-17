@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#12151d">
 <title>Hoops Rankings</title>
+<!-- AI agents: this page is rendered with JavaScript. All of its data is available as static JSON: see llms.txt and api/index.json -->
+<link rel="alternate" type="text/plain" title="Guide for AI agents" href="llms.txt">
+<link rel="alternate" type="application/json" title="Hoops Tracker API" href="api/index.json">
+<link rel="service-desc" type="application/json" href="api/openapi.json">
 <style>
 :root{--bg:#12151d;--card:#1a1e2a;--card2:#222737;--line:#2b3144;--text:#e9ecf4;--muted:#8d95aa;--accent:#00ceb8;--warn:#ffb84d;--bad:#ff6b6b;--good:#4ade80;--namew:128px}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -109,6 +113,7 @@ td.fp{color:var(--accent);font-weight:600}
 </style>
 </head>
 <body>
+<noscript><p>Hoops Tracker needs JavaScript. All of its data (rankings, stats, fantasy points, injuries, Sleeper league) is available as JSON: <a href="llms.txt">llms.txt</a> · <a href="api/index.json">api/index.json</a>.</p></noscript>
 <header>
   <h1>Hoops <span>Rankings</span></h1>
 </header>
