@@ -33,8 +33,10 @@ ALIASES_FILE = Path(__file__).resolve().parent / "aliases.json"
 
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/124.0 Safari/537.36")
-SCHEDULE_URL = "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"
-BOX_URL = "https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{}.json"
+SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={}"
+BOX_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event={}"
+INJURIES_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
+SEASON_START = datetime(2026, 10, 1).date()  # scan from here; preseason is filtered out by season type
 SLEEPER_URL = "https://api.sleeper.app/v1/players/nba"
 
 LOG_FIELDS = ["date", "opp", "min", "pts", "ast", "stl", "blk", "to", "tf",
@@ -207,54 +209,70 @@ def parse_minutes(m):
         return 0.0
 
 
-def list_games(sched):
+def list_games(scoreboard, date):
+    """Regular-season games from one ESPN scoreboard day. status 3 = final."""
     out = []
-    for gd in sched["leagueSchedule"]["gameDates"]:
-        for g in gd["games"]:
-            gid = str(g["gameId"])
-            if not gid.startswith("002"):  # regular season only (skips preseason, Cup final 006, play-in, playoffs)
-                continue
-            date = (g.get("gameDateEst") or g.get("gameDateTimeEst") or "")[:10]
-            out.append({"id": gid, "status": g.get("gameStatus"), "date": date})
+    for ev in scoreboard.get("events", []):
+        if (ev.get("season") or {}).get("type", 2) != 2:  # 2 = regular season (skips preseason etc.)
+            continue
+        final = ((ev.get("status") or {}).get("type") or {}).get("completed")
+        out.append({"id": str(ev["id"]), "status": 3 if final else 1, "date": date})
     return out
 
 
 def parse_box(raw, gid, date):
-    g = raw["game"]
+    """ESPN summary JSON -> {"id", "date", "players": [...]}. ESPN has no technical-foul stat (logged as 0)."""
+    comp = raw["header"]["competitions"][0]["competitors"]
+    abbr = {c["team"]["id"]: c["team"]["abbreviation"] for c in comp}
+    home = {c["team"]["id"]: c["homeAway"] == "home" for c in comp}
     players = []
-    for side, other in (("homeTeam", "awayTeam"), ("awayTeam", "homeTeam")):
-        t, o = g[side], g[other]
-        for p in t.get("players", []):
-            s = p.get("statistics") or {}
-            mins = parse_minutes(s.get("minutes"))
-            if mins <= 0:
-                continue  # did not play
-            name = p.get("name") or f"{p.get('firstName', '')} {p.get('familyName', '')}".strip()
-            players.append({
-                "pid": p["personId"], "name": name, "team": t["teamTricode"],
-                "log": [date, ("vs " if side == "homeTeam" else "@") + o["teamTricode"], mins,
-                        s.get("points", 0), s.get("assists", 0), s.get("steals", 0),
-                        s.get("blocks", 0), s.get("turnovers", 0), s.get("foulsTechnical", 0),
-                        s.get("fieldGoalsMade", 0), s.get("fieldGoalsAttempted", 0),
-                        s.get("freeThrowsMade", 0), s.get("freeThrowsAttempted", 0),
-                        s.get("threePointersMade", 0), s.get("threePointersAttempted", 0),
-                        s.get("reboundsOffensive", 0), s.get("reboundsDefensive", 0),
-                        s.get("foulsPersonal", 0)],
-            })
+    for t in raw["boxscore"]["players"]:
+        tid = t["team"]["id"]
+        opp = next(a for i, a in abbr.items() if i != tid)
+        team = team_norm(abbr[tid])
+        for grp in t.get("statistics", []):
+            keys = grp["keys"]
+            for a in grp.get("athletes", []):
+                if a.get("didNotPlay") or not a.get("stats"):
+                    continue
+                st = dict(zip(keys, a["stats"]))
+                mins = parse_minutes(st.get("minutes"))
+                if mins <= 0:
+                    continue
+
+                def ma(k):
+                    m, _, x = str(st.get(k, "0-0")).partition("-")
+                    return int(m or 0), int(x or 0)
+
+                fgm, fga = ma("fieldGoalsMade-fieldGoalsAttempted")
+                tpm, tpa = ma("threePointFieldGoalsMade-threePointFieldGoalsAttempted")
+                ftm, fta = ma("freeThrowsMade-freeThrowsAttempted")
+                i = lambda k: int(float(st.get(k) or 0))  # noqa: E731
+                players.append({
+                    "pid": a["athlete"]["id"], "name": a["athlete"]["displayName"], "team": team,
+                    "log": [date, ("vs " if home[tid] else "@") + team_norm(opp), mins,
+                            i("points"), i("assists"), i("steals"), i("blocks"), i("turnovers"), 0,
+                            fgm, fga, ftm, fta, tpm, tpa,
+                            i("offensiveRebounds"), i("defensiveRebounds"), i("fouls")],
+                })
     return {"id": gid, "date": date, "players": players}
 
 
 def update_box_scores(refetch_days, full):
-    """Returns (status dict, list of cached box dicts)."""
+    """Returns (status dict, list of cached box dicts). Source: ESPN's public JSON API."""
     BOX.mkdir(parents=True, exist_ok=True)
     status = {"ok": True, "error": None, "new_games": 0}
+    today = today_et()
+    games, d = [], SEASON_START
     try:
-        games = list_games(json.loads(http_get(SCHEDULE_URL)))
+        while d <= today:
+            games += list_games(json.loads(http_get(SCOREBOARD_URL.format(d.strftime("%Y%m%d")))), d.isoformat())
+            d += timedelta(days=1)
     except Exception as e:  # noqa: BLE001
         status.update(ok=False, error=f"schedule: {e}")
         log(f"NBA schedule: FAILED ({e}); using cached box scores only")
         return status, load_cached_boxes()
-    cutoff = (today_et() - timedelta(days=refetch_days)).isoformat()
+    cutoff = (today - timedelta(days=refetch_days)).isoformat()
     todo = []
     for g in games:
         if g["status"] != 3:  # only finished games
@@ -304,6 +322,104 @@ def build_logs(boxes):
             e["name"], e["team"] = p["name"], p["team"]
             e["logs"].append(p["log"])
     return by_pid
+
+
+# ----------------------------------------------------------------- injuries
+NUMW = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+        "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
+MONTHS = {m: i for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july",
+                                      "august", "september", "october", "november", "december"], 1)}
+GAMES_PER_DAY = 3.5 / 7  # a team plays ~3.5 games a week
+_N = r"(\d+|" + "|".join(NUMW) + ")"
+DUR_RE = re.compile(r"(re-?evaluated?|reassessed?|miss(?:ing)?|out|sidelined)(?:\s+(?:for|in|about|roughly|approximately|at\s+least|the\s+next|next))*"
+                    r"\s+" + _N + r"(?:\s*(?:to|-)\s*" + _N + r")?[\s-]*(day|week|month)s?\b")
+SEASON_RE = re.compile(r"season-ending|(?:miss|out\s+for|sidelined\s+for|done\s+for)\s+(?:the\s+)?(?:rest\s+of\s+the\s+|remainder\s+of\s+the\s+)?(?:\d{4}-\d{2}\s+)?season")
+
+
+def _num(x):
+    return int(x) if x.isdigit() else NUMW[x]
+
+
+def games_from_days(days):
+    return max(1, round(days * GAMES_PER_DAY))
+
+
+def estimate_return(status, short, long_, return_date, today):
+    """Best-effort 'how long is this player out' from ESPN's return date / analyst note.
+    Returns {"est_games", "est_min", "est_label", "return"}; est_games None = unknown, 999 = rest of season."""
+    out = {"est_games": None, "est_min": False, "est_label": None, "return": return_date or None}
+    text = f"{short or ''} {long_ or ''}".lower().replace("\u2013", "-")
+    status = (status or "").lower()
+    if SEASON_RE.search(text):
+        return {**out, "est_games": 999, "est_label": "rest of season"}
+    if return_date:
+        try:
+            days = (datetime.strptime(return_date[:10], "%Y-%m-%d").date() - today).days
+            return {**out, "est_games": games_from_days(days) if days > 0 else 1,
+                    "est_label": "return ~" + datetime.strptime(return_date[:10], "%Y-%m-%d").strftime("%b %-d")}
+        except ValueError:
+            pass
+    m = re.search(r"between (\w+) and (\w+)", text)
+    if m and m.group(1) in MONTHS and m.group(2) in MONTHS:
+        a, b = MONTHS[m.group(1)], MONTHS[m.group(2)]
+        mid = a + ((b - a) % 12) / 2
+        mid_date = datetime(today.year + (1 if int(mid) < today.month else 0), int(mid), 15).date()
+        return {**out, "est_games": games_from_days((mid_date - today).days),
+                "est_label": f"{m.group(1)[:3].title()}–{m.group(2)[:3].title()}"}
+    m = DUR_RE.search(text)
+    if m:
+        verb, lo, hi, unit = m.group(1), _num(m.group(2)), m.group(3) and _num(m.group(3)), m.group(4)
+        per = {"day": 1, "week": 7, "month": 30.4}[unit]
+        days = (lo + (hi or lo)) / 2 * per
+        reeval = verb.startswith(("re", "reassess")) or "at least" in m.group(0)
+        label = f"{lo}{'–' + str(hi) if hi else ''} {unit}{'s' if (hi or lo) != 1 else ''}"
+        return {**out, "est_games": games_from_days(days), "est_min": reeval,
+                "est_label": ("re-eval in " if verb.startswith(("re", "reassess")) else "≥ " if reeval else "") + label}
+    m = re.search(r"suspended\s+" + _N + r"\s+games?", text)
+    if m:
+        return {**out, "est_games": _num(m.group(1)), "est_label": f"suspended {m.group(1)} games"}
+    for pat, lab, g in [(r"week-to-week", "week-to-week", 6), (r"several weeks", "several weeks", 10),
+                        (r"significant time|extended (?:period|time)|\bmonths\b", "months", 25),
+                        (r"indefinite|stepping away", "indefinite", 999)]:
+        if re.search(pat, text):
+            return {**out, "est_games": g, "est_min": g not in (999,), "est_label": lab}
+    if "day-to-day" in status or "doubtful" in status or "questionable" in status:
+        return {**out, "est_games": 1, "est_label": "day-to-day"}
+    if re.search(r"(out|ruled out|won't play|will not play)[^.]{0,40}\b(game|tonight|tomorrow)", text):
+        return {**out, "est_games": 1, "est_label": "next game"}
+    return out
+
+
+def update_injuries():
+    """ESPN's NBA injury report -> list of dicts. A failure keeps the last good copy (data/injuries.json)."""
+    path = DATA / "injuries.json"
+    try:
+        raw = json.loads(http_get(INJURIES_URL))
+        rows = []
+        for tm in raw.get("injuries", []):
+            for i in tm.get("injuries", []):
+                a, d = i.get("athlete", {}), i.get("details") or {}
+                rows.append({"name": a.get("displayName"), "team": (a.get("team") or {}).get("abbreviation"),
+                             "status": i.get("status"), "date": (i.get("date") or "")[:10],
+                             "part": " ".join(x for x in [d.get("side"), d.get("type")] if x) or None,
+                             "detail": d.get("detail"), "return": d.get("returnDate"),
+                             "short": i.get("shortComment"), "long": i.get("longComment")})
+        write_json(path, {"fetched_at": now_iso(), "rows": rows})
+        log(f"ESPN injuries: {len(rows)} players")
+        return {"ok": True, "error": None, "fetched_at": now_iso(), "count": len(rows)}, rows
+    except Exception as e:  # noqa: BLE001
+        old = read_json(path, {})
+        log(f"ESPN injuries: FAILED ({e}); using cached copy" if old else f"ESPN injuries: FAILED ({e})")
+        return {"ok": False, "error": str(e), "fetched_at": old.get("fetched_at"), "count": len(old.get("rows", []))}, old.get("rows", [])
+
+
+def team_game_dates(boxes):
+    """team tricode -> sorted list of dates it played (from cached box scores)."""
+    out = {}
+    for b in boxes:
+        for t in {p["team"] for p in b["players"]}:
+            out.setdefault(t, []).append(b["date"])
+    return {t: sorted(d) for t, d in out.items()}
 
 
 # ----------------------------------------------------------------- rankings
@@ -415,6 +531,7 @@ def main():
     else:
         box_status, boxes = update_box_scores(args.refetch_days, args.full)
     logs = build_logs(boxes)
+    inj_status, inj_rows = update_injuries()
     sources = read_json(DATA / "sources.json", {}) if args.skip_rankings else update_sources()
 
     # ---- identity: everything is keyed by Sleeper id (or "u:<name>" when unmatched)
@@ -447,6 +564,13 @@ def main():
     ros_c = consensus({k: {s: r for s, r in e["rk"].items() if sources[s]["type"] == "ros"}
                        for k, e in entities.items()})
 
+    today = today_et()
+    tgames = team_game_dates(boxes)
+    inj_by_key = {}
+    for r in inj_rows:
+        sid = idx.resolve(r["name"], r["team"])
+        inj_by_key[sid or "u:" + norm(r["name"])] = r
+
     out = []
     for k, e in entities.items():
         sp = sleeper.get(e["sid"]) if e["sid"] else None
@@ -461,6 +585,16 @@ def main():
                    "notes": sp.get("injury_notes")}
             e["inj"] = inj if any(inj.values()) else None
             e["roster_status"] = sp.get("status")
+        ex = inj_by_key.get(k)
+        if ex:  # ESPN report (newer, has comments) wins over Sleeper's; keep Sleeper's body part if ESPN lacks one
+            est = estimate_return(ex["status"], ex["short"], ex["long"], ex["return"], today)
+            last = e["logs"][-1][0] if e["logs"] else None
+            gd = tgames.get(e["team"], [])
+            e["inj"] = {"status": ex["status"], "part": ex["part"] or (e["inj"] or {}).get("part"), "detail": ex["detail"],
+                        "notes": ex["short"], "long": ex["long"], "updated": ex["date"],
+                        "missed": sum(1 for d in gd if not last or d > last), **est}
+            if e["inj"]["status"] == "Day-To-Day" and not est["est_games"]:
+                e["inj"]["est_games"] = 1
         e["dyn"] = dyn_c.get(k, (None,))[0]
         e["ros"] = ros_c.get(k, (None,))[0]
         e["dyn_avg"] = round(dyn_c[k][1], 1) if k in dyn_c else None
@@ -475,6 +609,7 @@ def main():
         "stats": {**box_status, "games": len(boxes), "last_game_date": last_game,
                   "updated_at": (read_json(DATA / "meta.json", {}).get("stats", {}).get("updated_at") if args.skip_stats or not box_status["ok"] else now_iso())},
         "sleeper": {"ok": sleeper_err is None, "error": sleeper_err},
+        "injuries": inj_status,
         "sources": [{"id": s["id"], "label": sources[s["id"]]["label"], "type": s["type"],
                      "ok": sources[s["id"]].get("ok"), "error": sources[s["id"]].get("error"),
                      "count": len(sources[s["id"]].get("players", [])),

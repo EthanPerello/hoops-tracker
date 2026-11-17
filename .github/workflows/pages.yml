@@ -1,0 +1,46 @@
+name: Update data and deploy
+
+on:
+  schedule:            # 6:17am, 12:17pm, 6:17pm ET (UTC-4/5): fresh box scores in the morning, injury news through the day
+    - cron: "17 10,16,22 * * *"
+  push:
+    branches: [claude/serene-turing-6exmqg]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4          # box scores are immutable once final; only new games get downloaded
+        with:
+          path: data/box
+          key: box-${{ github.run_id }}
+          restore-keys: box-
+      - run: python3 scripts/update.py
+      - name: Assemble site
+        run: |
+          mkdir -p _site/data
+          cp index.html _site/
+          cp data/players.json data/meta.json _site/data/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
