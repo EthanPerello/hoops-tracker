@@ -41,6 +41,9 @@ header h1 span{color:var(--accent)}
 .c.nm{position:sticky;left:0;z-index:2;background:var(--bg);flex-direction:column;align-items:flex-start;justify-content:center;padding-left:12px;overflow:hidden;gap:1px;border-right:1px solid var(--line)}
 .c.nm b{font-weight:600;font-size:13.5px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .c.nm small{font-size:11px;color:var(--muted);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.star{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:30px;height:36px;font-size:18px;line-height:1;color:var(--muted)}
+.star.on{color:#ffd24d}
+.c.nm{padding-right:30px}
 .own{color:#8ab4ff}.own.me{color:var(--accent);font-weight:600}
 .tag{display:inline-block;font-size:9px;font-weight:700;border-radius:4px;padding:1px 3px;margin-left:4px;vertical-align:1px;background:var(--bad);color:#fff}
 .tag.q{background:var(--warn);color:#222}
@@ -117,7 +120,7 @@ td.fp{color:var(--accent);font-weight:600}
   <div class="seg" id="viewSeg"><button data-v="fantasy" class="on">Fantasy</button><button data-v="stats">Stats</button></div>
 </div>
 <div class="chips" id="filterChips" style="padding-top:2px">
-  <button class="chip" data-f="mine">☐ My players</button><button class="chip" data-f="rostered">☐ Other teams</button><button class="chip" data-f="avail">☐ Available</button>
+  <button class="chip" data-f="mine">☐ My players</button><button class="chip" data-f="rostered">☐ Other teams</button><button class="chip" data-f="avail">☐ Available</button><button class="chip" id="starChip">☆ Starred only</button>
 </div>
 <div class="frow"><div class="chips" id="posChips"></div>
   <div class="seg" id="winSeg"><button data-w="season" class="on">Season</button><button data-w="l5">Last 5</button></div></div>
@@ -158,7 +161,9 @@ let S = { ...DEFAULTS, ...lsGet('hoops.scoring', {}) };
 let players = [], meta = null, IX = {};
 let league = lsGet('hoops.league', null);   // {id,name,teams:[{rid,name}],owners:{pid:rid},scoring}
 let myRid = lsGet('hoops.myRid', null);
-const ui = Object.assign({ view:'fantasy', win:'season', flt:['mine','rostered','avail'], pos:[], q:'', sort:{key:'ros',dir:1} }, lsGet('hoops.ui', {}));
+const stars = new Set(lsGet('hoops.stars', []));   // player ids (our own ids, stable across updates)
+const toggleStar = id => { stars.has(id) ? stars.delete(id) : stars.add(id); lsSet('hoops.stars', [...stars]); };
+const ui = Object.assign({ view:'fantasy', win:'season', flt:['mine','rostered','avail'], starOnly:false, pos:[], q:'', sort:{key:'ros',dir:1} }, lsGet('hoops.ui', {}));
 ui.q = '';
 // Keys shared by both views (dyn, ros, fppg, mpg) keep the sort when switching views.
 // fppg/mpg and every st_* stat follow the Season / Last 5 toggle.
@@ -238,6 +243,7 @@ function visible() {
   return players.filter(p => {
     if (!ui.flt.some(f => f === 'mine' ? (league && ownerOf(p) === myRid && myRid != null)
         : f === 'rostered' ? ownerOf(p) != null && ownerOf(p) !== myRid : ownerOf(p) == null)) return false;   // checked boxes combine as OR
+    if (ui.starOnly && !stars.has(p.id)) return false;
     if (ui.pos.length && !(p.pos || []).some(x => ui.pos.includes(x))) return false;
     if (q && !fold(p.name).includes(q)) return false;
     return true;
@@ -267,7 +273,7 @@ function nameCell(p, stat) {
   const o = ownerLabel(p);
   const sub = injTag(p) + [(p.pos || []).slice(0, 2).join('/'), p.team].filter(Boolean).map(esc).join(' · ')
     + (o ? ` · <span class="own ${o === 'You' ? 'me' : ''}">${esc(o)}</span>` : '');
-  return `<div class="c nm" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><small>${sub}</small></div>`;
+  return `<div class="c nm" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><small>${sub}</small><button class="star ${stars.has(p.id) ? 'on' : ''}" data-star="${esc(p.id)}" aria-label="Star">${stars.has(p.id) ? '★' : '☆'}</button></div>`;
 }
 function render() {
   const stat = ui.view === 'stats';
@@ -294,8 +300,9 @@ function render() {
   if (!empty) for (const p of rows) { h += nameCell(p, stat); for (const [k] of cols) h += cell(k, p, stat); }
   h += '</div>';
   if (empty) {
-    const needLeague = !league && ui.flt.some(f => f === 'mine' || f === 'rostered');
+    const needLeague = !league && !ui.starOnly && ui.flt.some(f => f === 'mine' || f === 'rostered');
     h += `<div class="hint">${needLeague ? 'Link your Sleeper league to use this filter.<br><button id="linkNow">Link league</button>'
+      : ui.starOnly && !stars.size ? 'No starred players yet.<br>Tap ☆ next to a player to star them.'
       : ui.flt.includes('mine') && myRid == null ? 'Pick your team in Settings → League.<br><button id="linkNow">Open settings</button>' : 'No players match.'}</div>`;
   }
   t.innerHTML = h;
@@ -353,7 +360,7 @@ function showPlayer(id) {
   }
   const inj = i ? `<div class="injbox">${rows.map(r => `<div>${r}</div>`).join('')}${i.notes ? `<p>${esc(i.notes)}</p>` : ''}${i.long && i.long !== i.notes ? `<p class="dim">${esc(i.long)}</p>` : ''}${i.updated ? `<p class="dim" style="font-size:11px">Updated ${esc(i.updated)}</p>` : ''}</div>` : '';
   const games = p.g.slice(-15).reverse();
-  openSheet(`<h2>${esc(p.name)}</h2>
+  openSheet(`<h2>${esc(p.name)} <button class="star ${stars.has(p.id) ? 'on' : ''}" style="position:static;transform:none;width:34px;vertical-align:2px" data-star="${esc(p.id)}" data-sheet="1">${stars.has(p.id) ? '★' : '☆'}</button></h2>
     <div class="badges"><span class="badge">${esc(p.team || 'FA')}</span><span class="badge">${esc((p.pos || []).join('/') || '—')}</span>
       ${p.age ? `<span class="badge">Age ${esc(p.age)}</span>` : ''}
       <span class="badge">${o ? (o === 'You' ? '✅ Your team' : 'Owner: ' + esc(o)) : league ? 'Available' : 'No league linked'}</span></div>
@@ -443,6 +450,9 @@ async function linkLeague(text) {
 document.addEventListener('click', async e => {
   const t = e.target;
   if (t.closest('#ov') && t === $('#ov') || t.closest('.x')) return closeSheet();
+  const st = t.closest('[data-star]');
+  if (st) { toggleStar(st.dataset.star); if (st.dataset.sheet) { const on = stars.has(st.dataset.star); st.classList.toggle('on', on); st.textContent = on ? '★' : '☆'; } return render(); }
+  if (t.closest('#starChip')) { ui.starOnly = !ui.starOnly; return sync(); }
   const hd = t.closest('[data-sort]'); if (hd) return setSort(hd.dataset.sort);
   const c = t.closest('[data-id]'); if (c && $('#tbl').contains(c)) return showPlayer(c.dataset.id);
   if (t.id === 'linkNow') return showSettings();
@@ -480,7 +490,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet()
 function sync() {
   const stat = ui.view === 'stats';
   document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === ui.view));
-  document.querySelectorAll('#filterChips .chip').forEach(b => { const on = ui.flt.includes(b.dataset.f); b.classList.toggle('on', on); b.textContent = (on ? '☑ ' : '☐ ') + b.textContent.slice(2); });
+  document.querySelectorAll('#filterChips .chip[data-f]').forEach(b => { const on = ui.flt.includes(b.dataset.f); b.classList.toggle('on', on); b.textContent = (on ? '☑ ' : '☐ ') + b.textContent.slice(2); });
+  { const c = $('#starChip'); c.classList.toggle('on', ui.starOnly); c.textContent = (ui.starOnly ? '★' : '☆') + ' Starred only'; }
   document.querySelectorAll('#winSeg button').forEach(b => b.classList.toggle('on', b.dataset.w === ui.win));
   document.querySelectorAll('#posChips .chip').forEach(b => b.classList.toggle('on', ui.pos.includes(b.dataset.p)));
   // keep the active sort valid for the current view
