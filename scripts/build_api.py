@@ -427,6 +427,10 @@ def openapi(site_url):
 def llms_txt(site_url, fr, league, scoring_source, mcp_url=""):
     u = (site_url + "/") if site_url else ""
     srcs = ", ".join(f"{s['label']} {s['type']}{'' if s['ok'] else ' (stale)'}" for s in fr["ranking_sources"])
+    mcp_block = f"""
+MCP server (remote, no auth, Streamable HTTP): {mcp_url}
+Tools: get_overview, search_players, get_player, get_rankings, get_league (also reads any Sleeper league live), search, fetch.
+""" if mcp_url else ""
     return f"""# Hoops Tracker
 
 > NBA fantasy basketball rankings for a Sleeper points league. Consensus dynasty and rest-of-season (ROS) rankings
@@ -434,10 +438,7 @@ def llms_txt(site_url, fr, league, scoring_source, mcp_url=""):
 > Everything is available as static JSON — no scraping, no key, CORS open. Updated about 3 times a day.
 
 The web app ({u or 'index.html'}) renders with JavaScript; use the JSON below instead of the HTML.
-{f"""
-MCP server (remote, no auth, Streamable HTTP): {mcp_url}
-Tools: get_overview, search_players, get_player, get_rankings, get_league (also reads any Sleeper league live), search, fetch.
-""" if mcp_url else ""}
+{mcp_block}
 Current data: stats through {fr['stats_through'] or 'n/a'}; rankings: {srcs}; scoring: {scoring_source};
 league: {league.get('name') if league else 'not configured'}.
 
