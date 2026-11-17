@@ -110,7 +110,6 @@ td.fp{color:var(--accent);font-weight:600}
 <body>
 <header>
   <h1>Hoops <span>Rankings</span></h1>
-  <button class="icon" id="gear" aria-label="Settings">⚙</button>
 </header>
 <div id="lb"></div>
 <div id="status"></div>
@@ -153,8 +152,6 @@ const SCORING = [
   ['reb','Reb (total)',0,['reb']], ['pf','Personal foul',0,['pf']],
 ];
 const DEFAULTS = Object.fromEntries(SCORING.map(([k,,d]) => [k, d]));
-DEFAULTS.tdAlsoDd = true;   // triple-double also earns the double-double bonus
-DEFAULTS.b50Also40 = true;  // 50+ also earns the 40+ bonus
 let S = { ...DEFAULTS, ...lsGet('hoops.scoring', {}) };
 
 /* ---------------- state ---------------- */
@@ -180,8 +177,8 @@ function fpOf(l, s = S) {
     + fgm*s.fgm + fga*s.fga + (fga-fgm)*s.fgmiss + ftm*s.ftm + fta*s.fta + (fta-ftm)*s.ftmiss
     + tpm*s.tpm + tpa*s.tpa + (tpa-tpm)*s.tpmiss + oreb*s.oreb + dreb*s.dreb + reb*s.reb + g('pf')*s.pf;
   const cats = [pts, reb, ast, stl, blk].filter(x => x >= 10).length;
-  if (cats >= 3) { fp += s.td; if (s.tdAlsoDd) fp += s.dd; } else if (cats === 2) fp += s.dd;
-  if (pts >= 50) { fp += s.b50; if (s.b50Also40) fp += s.b40; } else if (pts >= 40) fp += s.b40;
+  if (cats >= 3) fp += s.td + s.dd; else if (cats === 2) fp += s.dd;   // bonuses stack: a triple-double also earns the double-double
+  if (pts >= 50) fp += s.b50 + s.b40; else if (pts >= 40) fp += s.b40;   // 50+ also earns the 40+ bonus
   if (ast >= 15) fp += s.b15ast;
   if (reb >= 20) fp += s.b20reb;
   return fp;
@@ -303,7 +300,7 @@ function render() {
     const needLeague = !league && !ui.starOnly && ui.flt.some(f => f === 'mine' || f === 'rostered');
     h += `<div class="hint">${needLeague ? 'Link your Sleeper league to use this filter.<br><button id="linkNow">Link league</button>'
       : ui.starOnly && !stars.size ? 'No starred players yet.<br>Tap ☆ next to a player to star them.'
-      : ui.flt.includes('mine') && myRid == null ? 'Pick your team in Settings → League.<br><button id="linkNow">Open settings</button>' : 'No players match.'}</div>`;
+      : ui.flt.includes('mine') && myRid == null ? 'Pick your team in the bar at the top.<br><button id="linkNow">Choose team</button>' : 'No players match.'}</div>`;
   }
   t.innerHTML = h;
 }
@@ -335,6 +332,7 @@ function renderStatus() {
   const rkCls = okN === srcs.length ? (stale(rkTimes[0]) ? 'stale' : 'ok') : okN ? 'stale' : 'fail';
   el.innerHTML = `<span><span class="dot ${stCls}"></span>Stats ${sd ? 'thru ' + sd : 'unavailable'} · ${ago(st.updated_at)}</span>`
     + `<span><span class="dot ${rkCls}"></span>Rankings ${okN}/${srcs.length} sources · ${ago(rkTimes[0])}</span>`
+    + (meta.injuries ? `<span><span class="dot ${meta.injuries.ok ? 'ok' : 'fail'}"></span>Injuries ${meta.injuries.count} · ${ago(meta.injuries.fetched_at)}</span>` : '')
     + (league ? `<span><span class="dot ok"></span>${esc(league.name)}</span>` : '');
 }
 
@@ -375,31 +373,6 @@ function showPlayer(id) {
       : '<div class="note">No game logs yet (stats not downloaded, or no games played).</div>'}`);
 }
 
-function showSettings(msg) {
-  const lg = league;
-  const sources = (meta?.sources || []).map(s => `<div class="src"><span><span class="dot ${s.ok ? 'ok' : 'fail'}"></span>${esc(s.label)} <span class="dim">${s.type === 'ros' ? 'ROS' : 'Dynasty'} · ${s.count}</span></span>
-    <span class="dim">${s.ok ? ago(s.fetched_at) : 'failed · kept ' + ago(s.fetched_at)}</span></div>${s.ok ? '' : `<div class="note err">${esc(s.error)}</div>`}`).join('');
-  const st = meta?.stats;
-  openSheet(`<h2>Settings</h2>
-    <h3>Sleeper league</h3>
-    <div class="row2"><input class="sheet-in" id="lgUrl" placeholder="Paste Sleeper league URL" value="${lg ? esc('https://sleeper.com/leagues/' + lg.id) : ''}" inputmode="url" autocapitalize="off">
-      <button class="btn" id="lgLink">${lg ? 'Reload' : 'Link'}</button></div>
-    <div class="note ${msg?.lg?.err ? 'err' : ''}" id="lgMsg">${esc(msg?.lg?.text || (lg ? `${lg.name} · ${lg.teams.length} teams · loaded ${ago(new Date(lg.fetchedAt).toISOString())}` : 'Players load straight from api.sleeper.app in your browser.'))}</div>
-    ${lg ? `<div class="field" style="grid-template-columns:1fr"><select class="sheet-in" id="myTeam"><option value="">— Which team is yours? —</option>
-      ${lg.teams.map(t => `<option value="${t.rid}" ${t.rid === myRid ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>
-      <button class="btn sec" id="lgUnlink">Unlink league</button>` : ''}
-    <h3>Scoring (fantasy points)</h3>
-    <div class="row2"><button class="btn" id="imp" ${lg ? '' : 'disabled style="opacity:.5"'}>Import from my Sleeper league</button><button class="btn sec" id="reset">Reset</button></div>
-    <div class="note ${msg?.imp?.err ? 'err' : msg?.imp ? 'good' : ''}" id="impMsg">${msg?.imp?.html || ''}</div>
-    <div class="two">${SCORING.map(([k, lab]) => `<label class="field"><span>${lab}</span><input type="number" step="any" inputmode="decimal" data-k="${k}" value="${S[k]}"></label>`).join('')}</div>
-    <label class="tog"><input type="checkbox" data-t="tdAlsoDd" ${S.tdAlsoDd ? 'checked' : ''}><span>Triple-double also earns the double-double bonus</span></label>
-    <label class="tog"><input type="checkbox" data-t="b50Also40" ${S.b50Also40 ? 'checked' : ''}><span>50+ points also earns the 40+ bonus</span></label>
-    <h3>Data</h3>
-    <div class="src"><span><span class="dot ${st?.ok ? 'ok' : 'fail'}"></span>NBA box scores <span class="dim">${st ? st.games + ' games' : ''}</span></span><span class="dim">${st?.last_game_date ? 'thru ' + esc(st.last_game_date) : '—'}</span></div>
-    ${st && !st.ok ? `<div class="note err">${esc(st.error)}</div>` : ''}${meta?.injuries ? `<div class="src"><span><span class="dot ${meta.injuries.ok ? 'ok' : 'fail'}"></span>ESPN injuries <span class="dim">${meta.injuries.count}</span></span><span class="dim">${ago(meta.injuries.fetched_at)}</span></div>` : ''}${sources}
-    <div class="note">Refresh by running <code>make update</code>, then reload.</div>`);
-}
-
 /* ---------------- Sleeper scoring import ---------------- */
 function importScoring() {
   const sc = league.scoring || {};
@@ -412,9 +385,7 @@ function importScoring() {
   }
   S = next; lsSet('hoops.scoring', S); compute(); render();
   const n = [...known.keys()].filter(k => k in sc).length;
-  return { html: `Imported ${n} scoring values from “${esc(league.name)}”.` +
-    (unmapped.length ? `<br><b>Couldn’t map:</b> ${esc(unmapped.join(', '))}` : '<br>All scoring keys were mapped.') +
-    '<br>Double-double / 50+ toggles are unchanged — set them below.' };
+  return { n, unmapped };
 }
 
 /* ---------------- league bar (main screen) ---------------- */
@@ -442,7 +413,7 @@ async function linkLeague(text) {
     league = nl; lsSet('hoops.league', league); lsSet('hoops.myRid', myRid);
     const imp = Object.keys(nl.scoring).length ? importScoring() : null;
     renderStatus(); renderLeagueBar(); render();
-    return { text: `Linked “${nl.name}”` + (imp ? ' and imported its scoring.' : '.') + (myRid == null ? ' Now pick your team.' : ''), imp };
+    return { text: `Linked “${nl.name}”` + (imp ? ` and imported ${imp.n} scoring values.` : '.') + (imp?.unmapped.length ? ` Couldn’t map: ${imp.unmapped.join(', ')}.` : '') + (myRid == null ? ' Now pick your team.' : '') };
   } catch (err) { return { err: true, text: 'Failed: ' + err.message }; }
 }
 
@@ -455,33 +426,22 @@ document.addEventListener('click', async e => {
   if (t.closest('#starChip')) { ui.starOnly = !ui.starOnly; return sync(); }
   const hd = t.closest('[data-sort]'); if (hd) return setSort(hd.dataset.sort);
   const c = t.closest('[data-id]'); if (c && $('#tbl').contains(c)) return showPlayer(c.dataset.id);
-  if (t.id === 'linkNow') return showSettings();
-  if (t.closest('#gear')) return showSettings();
+  if (t.id === 'linkNow') { const f = $('#lbUrl') || $('#lbTeam'); f?.scrollIntoView({ block: 'center' }); return f?.focus(); }
   const v = t.closest('#viewSeg [data-v]');
   if (v) { ui.view = v.dataset.v; if (ui.view === 'stats' && !ui.sort.key) ui.sort = { key: 'ros', dir: 1 }; return sync(); }
   const f = t.closest('#filterChips [data-f]'); if (f) { const k = f.dataset.f; ui.flt = ui.flt.includes(k) ? ui.flt.filter(x => x !== k) : [...ui.flt, k]; return sync(); }
   const w = t.closest('#winSeg [data-w]'); if (w) { ui.win = w.dataset.w; return sync(); }
   const pc = t.closest('#posChips [data-p]');
   if (pc) { const p = pc.dataset.p; ui.pos = ui.pos.includes(p) ? ui.pos.filter(x => x !== p) : [...ui.pos, p]; return sync(); }
-  if (t.id === 'lgLink') {
-    $('#lgMsg').textContent = 'Loading…';
-    const r = await linkLeague($('#lgUrl').value);
-    return showSettings({ lg: { err: r.err, text: r.text }, imp: r.imp });
-  }
   if (t.id === 'lbLink' || t.id === 'lbReload') {
     lbMsg('Loading…');
     const r = await linkLeague(t.id === 'lbLink' ? $('#lbUrl').value : 'leagues/' + league.id);
     return lbMsg(r.err ? r.text : t.id === 'lbReload' ? 'Reloaded league and scoring.' : r.text, r.err);
   }
-  if (t.id === 'lgUnlink') { league = null; myRid = null; localStorage.removeItem('hoops.league'); localStorage.removeItem('hoops.myRid'); ui.flt = ['mine', 'rostered', 'avail']; renderStatus(); renderLeagueBar(); sync(); if ($('#sheet').classList.contains('show')) showSettings(); }
-  if (t.id === 'imp' && league) showSettings({ imp: importScoring() });
-  if (t.id === 'reset') { S = { ...DEFAULTS }; lsSet('hoops.scoring', S); compute(); render(); showSettings(); }
+  if (t.id === 'lgUnlink') { league = null; myRid = null; localStorage.removeItem('hoops.league'); localStorage.removeItem('hoops.myRid'); ui.flt = ['mine', 'rostered', 'avail']; renderStatus(); renderLeagueBar(); sync(); }
 });
 document.addEventListener('change', e => {
-  const t = e.target;
-  if (t.dataset.k) { S[t.dataset.k] = Number(t.value) || 0; lsSet('hoops.scoring', S); compute(); render(); }
-  else if (t.dataset.t) { S[t.dataset.t] = t.checked; lsSet('hoops.scoring', S); compute(); render(); }
-  else if (t.id === 'myTeam' || t.id === 'lbTeam') { myRid = t.value ? Number(t.value) : null; lsSet('hoops.myRid', myRid); renderLeagueBar(); render(); }
+  if (e.target.id === 'lbTeam') { myRid = e.target.value ? Number(e.target.value) : null; lsSet('hoops.myRid', myRid); renderLeagueBar(); render(); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'lbUrl') $('#lbLink').click(); });
 $('#q').addEventListener('input', e => { ui.q = e.target.value; render(); });
