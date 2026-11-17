@@ -85,26 +85,6 @@ class BuildApiTests(unittest.TestCase):
         self.assertEqual(star["game_logs"][-1]["fantasy_points"], 66.0)
         self.assertIsNone(self.load("api/players/200.json")["fantasy_team"])
 
-    def test_ai_pages(self):
-        self.out.mkdir(parents=True)
-        (self.out / "index.html").write_text("<html><body><noscript><p>old</p></noscript><div id=app></div></body></html>")
-        B.build(self.out, "999", "https://example.github.io/hoops")
-        ai = self.out / "ai"
-        home = (ai / "index.html").read_text()
-        for page in ("league.html", "available.html", "dynasty.html", "injuries.html", "players-1.html"):
-            self.assertTrue((ai / page).exists(), page)
-            self.assertIn(f"https://example.github.io/hoops/ai/{page}", home)
-        self.assertIn("Dunk Tank", home)  # standings
-        self.assertIn("José García", (ai / "players-1.html").read_text())
-        star = (ai / "players" / "100.html").read_text()
-        self.assertIn("Dunk Tank", star)
-        self.assertIn("66.0", star)  # per-game fantasy points under league scoring
-        self.assertNotIn("<script", home + star)
-        app = (self.out / "index.html").read_text()
-        self.assertNotIn("old", app)
-        self.assertIn("https://example.github.io/hoops/ai/", app)
-        self.assertIn("<div id=app>", app)
-
     def test_league_failure_is_not_fatal(self):
         def boom(url):
             raise OSError("network down")

@@ -28,7 +28,6 @@ import shutil
 import sys
 import urllib.request
 
-from ai_pages import build_ai_pages, noscript_summary
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -324,17 +323,6 @@ def build(out, league_id=None, site_url="", mcp_url=""):
                                           f"{SLEEPER}/league/{{league_id}}, /rosters, /users. Players are keyed by "
                                           "Sleeper player id, which matches sleeper_id in players.json."}
     write_json(api / "league.json", league_out)
-
-    # ---- plain-HTML pages for chat assistants (ai/) + a summary in the app page's <noscript>
-    if (out / "ai").exists():
-        shutil.rmtree(out / "ai")
-    by_type = {typ: [x for x in freshness["ranking_sources"] if x["type"] == typ] for typ in ("dynasty", "ros")}
-    _, ai_links = build_ai_pages(out, summaries, full, league_out, freshness, scoring_info, site_url, by_type)
-    app = out / "index.html"
-    if app.exists():
-        html = re.sub(r"<noscript>.*?</noscript>", lambda _: noscript_summary(ai_links, site_url, freshness),
-                      app.read_text(), count=1, flags=re.S)
-        app.write_text(html)
 
     # ---- bulk game logs (compact)
     write_json(api / "game_logs.json", {

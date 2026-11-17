@@ -17,15 +17,7 @@ make serve      # then open http://localhost:8000
 
 ## For AI agents (ChatGPT, Claude, …)
 
-**Easiest: paste the URL into the chat.** Give ChatGPT or Claude `https://ethanperello.github.io/hoops-tracker/ai/` (the
-plain site URL works too) and ask your question. `ai/` is plain HTML built for chat assistants. They read pages without
-running JavaScript and cut off long pages, so it's split into small linked pages:
-- an overview (freshness, scoring, standings, top 25)
-- ROS-ranked players 100 per page, with every per-game stat and FPPG
-- dynasty rankings, injuries, league rosters and best available (with `SLEEPER_LEAGUE_ID`)
-- one page per player with game logs
-
-It's built by `scripts/ai_pages.py`.
+**Use the MCP server** (below). It's the supported way to connect ChatGPT, Claude and other agents.
 
 Each deploy also publishes a static, read-only JSON API next to the app. It needs no key and no scraping (CORS open).
 Fantasy points are already calculated, so agents don't need to implement scoring. It's built by `scripts/build_api.py`.
@@ -75,7 +67,6 @@ Locally: `make api` builds the full site into `_site/`, `make serve-site` serves
 | `scripts/update.py` | Data refresh. Sources are listed in `SOURCES`; parsers are `parse_fantasypros`, `parse_hb_dynasty`, `parse_hb_table`. |
 | `scripts/aliases.json` | Optional, create it yourself: extra name → Sleeper-name fixes. |
 | `index.html` | The whole app (HTML/CSS/JS, no build step). Scoring logic is `fpOf()`; Sleeper scoring-key mapping is the `SCORING` table. |
-| `scripts/ai_pages.py` | Plain-HTML pages for chat assistants (`_site/ai/`). |
 | `scripts/build_api.py` | Builds `_site/`: the app plus the agent API (`api/`, `llms.txt`, `openapi.json`). Its `SCORING` table mirrors the one in `index.html`; keep the two in sync. |
 | `worker/` | Remote MCP server (Cloudflare Worker): `src/index.js`, `wrangler.toml`. Local test: `cd worker && npx wrangler dev`. |
 | `tests/` | Offline tests: `make test` |
