@@ -16,7 +16,6 @@ header{padding:10px 12px 6px;display:flex;align-items:center;gap:8px}
 header h1{font-size:18px;margin:0;flex:1;letter-spacing:.2px}
 header h1 span{color:var(--accent)}
 .icon{width:36px;height:36px;border-radius:10px;background:var(--card);display:grid;place-items:center;font-size:18px}
-#status{padding:0 12px 6px;font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;vertical-align:1px}
 .ok{background:var(--good)}.fail{background:var(--bad)}.stale{background:var(--warn)}
 .bar{padding:0 12px 6px;display:flex;gap:8px;align-items:center}
@@ -59,7 +58,7 @@ header h1 span{color:var(--accent)}
   .tools .bar{flex:1 1 300px}.tools .chips{overflow:visible}
   .tools .frow{flex:1 1 auto;padding-top:0}.tools>#filterChips{padding-top:0!important}
   .c{height:42px}.c,.hd{font-size:14px}.c.nm b{font-size:14.5px}
-  header,#status,#lb{padding-left:20px;padding-right:20px}
+  header,#lb{padding-left:20px;padding-right:20px}
   .hd.nm,.c.nm{padding-left:20px}
 }
 #lb{padding:0 12px 8px}
@@ -114,14 +113,13 @@ td.fp{color:var(--accent);font-weight:600}
   <h1>Hoops <span>Rankings</span></h1>
 </header>
 <div id="lb"></div>
-<div id="status"></div>
 <div class="tools">
 <div class="bar">
   <input class="search" id="q" type="search" placeholder="Search players" autocomplete="off">
   <div class="seg" id="viewSeg"><button data-v="fantasy" class="on">Fantasy</button><button data-v="stats">Stats</button></div>
 </div>
 <div class="chips" id="filterChips" style="padding-top:2px">
-  <button class="chip" data-f="mine">☐ My players</button><button class="chip" data-f="rostered">☐ Other teams</button><button class="chip" data-f="avail">☐ Available</button><button class="chip" id="starChip">☆ Starred only</button>
+  <button class="chip" data-f="mine">☐ My players</button><button class="chip" data-f="rostered">☐ Other teams</button><button class="chip" data-f="avail">☐ Available</button><button class="chip" id="starChip" aria-label="Starred only" title="Starred only">☆</button>
 </div>
 <div class="frow"><div class="chips" id="posChips"></div>
   <div class="seg" id="winSeg"><button data-w="season" class="on">Season</button><button data-w="l5">Last 5</button></div></div>
@@ -324,23 +322,6 @@ function ago(iso) {
   if (m < 2880) return Math.round(m / 60) + 'h ago';
   return Math.round(m / 1440) + 'd ago';
 }
-function renderStatus() {
-  const el = $('#status');
-  if (!meta) { el.innerHTML = '<span><span class="dot fail"></span>No data yet — run <code>make update</code></span>'; return; }
-  const st = meta.stats || {};
-  const stale = iso => iso && (Date.now() - new Date(iso)) > 36 * 3600e3;
-  const sd = st.last_game_date ? new Date(st.last_game_date + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' }) : null;
-  const stCls = !st.ok ? 'fail' : stale(st.updated_at) ? 'stale' : 'ok';
-  const srcs = meta.sources || [];
-  const okN = srcs.filter(s => s.ok).length;
-  const rkTimes = srcs.map(s => s.fetched_at).filter(Boolean).sort();
-  const rkCls = okN === srcs.length ? (stale(rkTimes[0]) ? 'stale' : 'ok') : okN ? 'stale' : 'fail';
-  el.innerHTML = `<span><span class="dot ${stCls}"></span>Stats ${sd ? 'thru ' + sd : 'unavailable'} · ${ago(st.updated_at)}</span>`
-    + `<span><span class="dot ${rkCls}"></span>Rankings ${okN}/${srcs.length} sources · ${ago(rkTimes[0])}</span>`
-    + (meta.injuries ? `<span><span class="dot ${meta.injuries.ok ? 'ok' : 'fail'}"></span>Injuries ${meta.injuries.count} · ${ago(meta.injuries.fetched_at)}</span>` : '')
-    + (league ? `<span><span class="dot ok"></span>${esc(league.name)}</span>` : '');
-}
-
 /* ---------------- sheet ---------------- */
 function openSheet(html) {
   $('#sheet').innerHTML = '<button class="x" aria-label="Close">×</button>' + html;
@@ -417,7 +398,7 @@ async function linkLeague(text) {
     if (!league || league.id !== id) myRid = null;
     league = nl; lsSet('hoops.league', league); lsSet('hoops.myRid', myRid);
     const imp = Object.keys(nl.scoring).length ? importScoring() : null;
-    renderStatus(); renderLeagueBar(); render();
+    renderLeagueBar(); render();
     return { text: `Linked “${nl.name}”` + (imp ? ` and imported ${imp.n} scoring values.` : '.') + (imp?.unmapped.length ? ` Couldn’t map: ${imp.unmapped.join(', ')}.` : '') + (myRid == null ? ' Now pick your team.' : '') };
   } catch (err) { return { err: true, text: 'Failed: ' + err.message }; }
 }
@@ -443,7 +424,7 @@ document.addEventListener('click', async e => {
     const r = await linkLeague(t.id === 'lbLink' ? $('#lbUrl').value : 'leagues/' + league.id);
     return lbMsg(r.err ? r.text : t.id === 'lbReload' ? 'Reloaded league and scoring.' : r.text, r.err);
   }
-  if (t.id === 'lgUnlink') { league = null; myRid = null; localStorage.removeItem('hoops.league'); localStorage.removeItem('hoops.myRid'); ui.flt = ['mine', 'rostered', 'avail']; renderStatus(); renderLeagueBar(); sync(); }
+  if (t.id === 'lgUnlink') { league = null; myRid = null; localStorage.removeItem('hoops.league'); localStorage.removeItem('hoops.myRid'); ui.flt = ['mine', 'rostered', 'avail']; renderLeagueBar(); sync(); }
 });
 document.addEventListener('change', e => {
   if (e.target.id === 'lbTeam') { myRid = e.target.value ? Number(e.target.value) : null; lsSet('hoops.myRid', myRid); renderLeagueBar(); render(); }
@@ -456,7 +437,7 @@ function sync() {
   const stat = ui.view === 'stats';
   document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === ui.view));
   document.querySelectorAll('#filterChips .chip[data-f]').forEach(b => { const on = ui.flt.includes(b.dataset.f); b.classList.toggle('on', on); b.textContent = (on ? '☑ ' : '☐ ') + b.textContent.slice(2); });
-  { const c = $('#starChip'); c.classList.toggle('on', ui.starOnly); c.textContent = (ui.starOnly ? '★' : '☆') + ' Starred only'; }
+  { const c = $('#starChip'); c.classList.toggle('on', ui.starOnly); c.textContent = ui.starOnly ? '★' : '☆'; }
   document.querySelectorAll('#winSeg button').forEach(b => b.classList.toggle('on', b.dataset.w === ui.win));
   document.querySelectorAll('#posChips .chip').forEach(b => b.classList.toggle('on', ui.pos.includes(b.dataset.p)));
   // keep the active sort valid for the current view
@@ -474,14 +455,14 @@ async function boot() {
     compute();
   } catch (err) {
     $('#tbl').innerHTML = `<div class="hint">No data found.<br>Run <code>make update</code> in the project folder, then reload.<br><small>${esc(err.message)}</small></div>`;
-    renderStatus(); return;
+    return;
   }
-  renderStatus(); renderLeagueBar(); sync();
+  renderLeagueBar(); sync();
   if (league) fetchLeague(league.id).then(nl => {
     const changed = JSON.stringify(nl.scoring) !== JSON.stringify(league.scoring);   // league scoring edited on Sleeper -> re-import
     league = nl; lsSet('hoops.league', nl);
     if (changed && Object.keys(nl.scoring).length) importScoring();
-    renderStatus(); renderLeagueBar(); render();
+    renderLeagueBar(); render();
   }).catch(() => {});
 }
 boot();
