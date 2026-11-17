@@ -265,12 +265,12 @@ function estTxt(i) {
   if (i.est_games >= 999) return 'SZN';
   return i.est_min ? i.est_games + 'g+' : '~' + i.est_games + 'g';
 }
-// One pill: status + how long, e.g. "OUT ~18g" (amber for day-to-day / questionable)
+// One pill: status + how long, e.g. "OUT (~18g)" (amber for day-to-day / questionable)
 function injTag(p) {
   const i = p.inj; if (!i?.status) return '';
   const ab = i.status.replace(/Questionable/i,'Q').replace(/Doubtful/i,'D').replace(/Probable/i,'P').replace(/Day-To-Day/i,'DTD').replace(/Suspension/i,'SUSP').slice(0, 4).toUpperCase();
   const e = ab === 'DTD' ? '' : estTxt(i);
-  return `<span class="tag ${/quest|prob|day/i.test(i.status) ? 'q' : ''}">${esc(ab)}${e ? ' ' + esc(e) : ''}</span>`;
+  return `<span class="tag ${/quest|prob|day/i.test(i.status) ? 'q' : ''}">${esc(ab)}${e ? ' (' + esc(e) + ')' : ''}</span>`;
 }
 function nameCell(p, stat) {
   const o = ownerLabel(p);
