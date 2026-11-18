@@ -6,3 +6,6 @@ workers_dev = true
 [vars]
 # Base URL of the GitHub Pages site whose /api/*.json this server reads.
 DATA_URL = "https://ethanperello.github.io/hoops-tracker"
+
+# Default public Sleeper league used by get_league, get_matchup and get_transactions.
+DEFAULT_LEAGUE_ID = "1408140530877042688"
