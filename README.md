@@ -38,8 +38,8 @@ Variables). The workflow then publishes `api/league.json`, adds `fantasy_team` t
 league's scoring. Without it, the API uses the default scoring and `league.json` explains how to set it up.
 
 **Optional remote MCP server** (`worker/`, a Cloudflare Worker, free tier): lets ChatGPT, Claude and other MCP clients connect
-with just a URL and query the data with tools. Those tools are `get_overview`, `search_players`, `get_player`, `get_rankings`
-and `get_league` (it also reads any Sleeper league live when given a `league_id`), plus `search`/`fetch` in the format
+with just a URL and query the data with tools. Those tools are `get_overview`, `search_players`, `get_player`, `get_rankings`,
+`get_league`, `get_transactions` and `get_matchup` (it also reads any Sleeper league live when given a `league_id`), plus `search`/`fetch` in the format
 ChatGPT connectors expect. It reads the Pages JSON live, so data updates never need a redeploy.
 
 Deploy once, from your computer (needs Node.js and a free Cloudflare account):
@@ -50,6 +50,17 @@ This prints the URL, e.g. `https://hoops-tracker-mcp.<your-subdomain>.workers.de
 Optionally add it as the repo variable `MCP_URL` so `llms.txt` and `api/index.json` advertise it.
 To redeploy from GitHub Actions when `worker/` changes, add the secrets `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` (see `.github/workflows/worker.yml`).
+
+**Live Sleeper league endpoints** (Cloudflare Worker, no authentication):
+
+- `GET /api/league?team=5`: current starting/bench/IR/taxi roster, ranks and per-game statistics.
+- `GET /api/transactions?team=5&weeks_back=3`: confirmed recent additions, drops, waivers, trades, traded draft picks, and FAAB bids.
+- `GET /api/matchup?team=5`: the current weekly matchup, opponent, starters by lineup position, bench and public score. Pass `week=N` for an earlier matchup.
+- MCP tools `get_transactions` and `get_matchup` expose the same data to ChatGPT and Claude. `league_id` can override the configured default league.
+
+These are **live Worker endpoints**, not static GitHub Pages JSON snapshots; the Worker makes short-cache calls to Sleeper's public API. In `worker/wrangler.toml`, `DEFAULT_LEAGUE_ID` selects the default league. The existing `api/league.json` static file is only published if the GitHub Actions variable `SLEEPER_LEAGUE_ID` is set.
+
+**NBA Lock-In limitation:** Sleeper's documented public matchup endpoint does not expose which individual game a manager locked. The endpoints deliberately return `lock_ins.available: false` and do *not* treat public weekly point totals as verified locked scores. Accurate automatic lock tracking requires a separately authorized, supported sync source or manual entry.
 
 **Connecting agents** (MCP URL = `https://hoops-tracker-mcp.<subdomain>.workers.dev/mcp`, no authentication):
 - *ChatGPT:* Settings → Apps & Connectors → Advanced → turn on Developer mode → Create. Paste the MCP URL and choose "No authentication".
