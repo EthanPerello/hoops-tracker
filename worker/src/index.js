@@ -231,6 +231,55 @@ const TOOLS = {
       return teams.length ? { name: lg.name, teams } : { error: `No team matches "${a.team}"`, teams: lg.teams.map(t => t.team_name) };
     },
   },
+
+  get_matchup: {
+    description: 'Live weekly Sleeper NBA lineup: starters, bench, lineup positions, opponent and reported matchup scores. Explicit lock-in choices are NOT reliably available in the public API.',
+    inputSchema: { type: 'object', properties: {
+      league_id: str('Sleeper league ID or URL; optional with configured default'),
+      week: { type: 'integer', description: 'Week; defaults to the current league leg' },
+      team: str('Filter by fantasy team name, owner or roster ID'),
+    } },
+    async run(a, env) {
+      const ctx = await liveWeekContext(env, a);
+      const { id, base, week, league, players, teams } = ctx;
+      const matchups = await getJSON(`${base}/matchups/${week}`, 60);
+      if (!Array.isArray(matchups)) throw new Error('Sleeper did not return a matchup list');
+      const selected = ctx.selectTeam(a.team);
+      if (a.team && !selected.length) return { error: `No team matches "${a.team}"`, teams: Object.values(teams).map(t => t.team_name) };
+      const result = matchups.filter(m => !a.team || selected.includes(String(m.roster_id))).map(m => {
+        const t = teams[String(m.roster_id)] || {};
+        const starterIds = (m.starters || []).map(String);
+        const starters = new Set(starterIds);
+        const benchIds = (m.players || t.roster?.players || []).map(String).filter(sid => !starters.has(sid));
+        const mapped = (sid, ix, starting) => {
+          const p = players[sid] || {};
+          return {
+            sleeper_id: sid, name: p.name || null, team: p.team || null, positions: p.positions || [],
+            lineup_position: starting ? (league.roster_positions || [])[ix] || null : 'BN',
+            reported_points: scoreFor(starting ? m.starters_points : m.players_points, sid, ix),
+            lock_in_status: 'unknown',
+          };
+        };
+        const opp = matchups.find(other => other.roster_id !== m.roster_id && other.matchup_id === m.matchup_id);
+        return {
+          roster_id: m.roster_id, team_name: t.team_name || null, owner: t.owner || null,
+          opponent: opp ? (teams[String(opp.roster_id)]?.team_name || String(opp.roster_id)) : null,
+          matchup_id: m.matchup_id, reported_team_points: m.points ?? null,
+          starting_lineup: starterIds.filter(sid => sid && sid !== '0').map((sid, i) => mapped(sid, i, true)),
+          bench: benchIds.map((sid, i) => mapped(sid, i, false)),
+          injured_reserve: (t.roster?.reserve || []).map(pid => ({ sleeper_id: String(pid), name: nameOf(pid, players) })),
+          taxi: (t.roster?.taxi || []).map(pid => ({ sleeper_id: String(pid), name: nameOf(pid, players) })),
+        };
+      });
+      return {
+        league_id: id, league_name: league.name, week, fetched_at: new Date().toISOString(),
+        source: 'Sleeper public weekly matchups (cached 60 seconds)',
+        lock_in_data_available: false,
+        warning: 'Reported points can include unselected games; do NOT infer explicit locked games from reported matchup scores.',
+        teams: result,
+      };
+    },
+  },
   // search + fetch follow OpenAI's connector convention (ChatGPT deep research / company knowledge).
   search: {
     description: 'Search Hoops Tracker for players by name, team or position (e.g. "Jokic", "LAL", "C"). Returns ids for fetch.',
@@ -286,7 +335,8 @@ async function handle(msg, env) {
         serverInfo: { name: 'hoops-tracker', title: 'Hoops Tracker', version: '1.0.0' },
         instructions: 'NBA fantasy basketball data for a Sleeper points league: consensus dynasty and rest-of-season rankings, '
           + 'per-game stats and fantasy points, injuries, and Sleeper league rosters. Start with get_overview; use search_players '
-          + 'or get_rankings for lists, get_player for one player, get_league for rosters and available players.',
+          + 'or get_rankings for lists, get_player for one player, get_league for rosters, get_matchup for live starters/bench, '
+          + 'and get_transactions for recent moves. Explicit NBA lock-ins are not reliably exposed by Sleeper.',
       });
     }
     case 'ping': return ok({});
