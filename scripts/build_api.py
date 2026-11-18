@@ -534,6 +534,10 @@ def openapi(site_url):
                                          "Compact list sorted by rank, with each source's rank, FPPG, injury and fantasy team."),
             "/api/rankings/dynasty.json": op("getDynastyRankings", "Dynasty consensus rankings",
                                              "Compact list sorted by rank, with each source's rank, FPPG, injury and fantasy team."),
+            "/api/matchup.json": op("getMatchupSnapshot", "Latest Sleeper weekly matchup lineup snapshot",
+                                    "Starting players, bench, opponent and reported points. Not verified NBA lock-ins."),
+            "/api/transactions.json": op("getTransactionsSnapshot", "Latest Sleeper transaction snapshot",
+                                        "Recent completed adds, drops, trades, waiver bids and draft picks."),
             "/api/league.json": op("getLeague", "Sleeper league: teams, rosters, records, best available",
                                    "Scoring settings, every team's roster with ranks and FPPG, and the top available players."),
             "/api/players/{id}.json": op("getPlayer", "One player with full game logs",
@@ -571,6 +575,9 @@ league: {league.get('name') if league else 'not configured'}.
 - [ROS rankings]({u}api/rankings/ros.json): consensus rest-of-season ranking, each source's rank, FPPG, injury, fantasy team.
 - [Dynasty rankings]({u}api/rankings/dynasty.json): same for dynasty / long-term value.
 - [Sleeper league]({u}api/league.json): scoring, every team's roster (ranks, FPPG, slot), records, best available players.
+- [Weekly matchup snapshot]({u}api/matchup.json): starters, bench, positions and reported points; NOT verified lock-ins.
+- [Recent transaction snapshot]({u}api/transactions.json): adds, drops, trades and FAAB.
+
 - [All players]({u}api/players.json): every player with rankings, season + last-5 averages, FPPG, injury, owner (large).
 - Player detail: {u}api/players/{{id}}.json — adds every game log with fantasy points. `id` comes from any list
   (it is the Sleeper player id for matched players).
