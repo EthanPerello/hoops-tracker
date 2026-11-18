@@ -232,6 +232,56 @@ const TOOLS = {
     },
   },
 
+
+  get_transactions: {
+    description: 'Live Sleeper adds, drops, trades, traded draft picks and FAAB bids, with player/team names and dates. Fetch a week or several recent weeks, optionally for one fantasy team.',
+    inputSchema: { type: 'object', properties: {
+      league_id: str('Sleeper league ID or URL; optional with configured default'),
+      week: { type: 'integer', description: 'Last week to check; defaults to current league leg' },
+      lookback_weeks: { type: 'integer', description: 'Weeks to check including selected week (default 2, max 8)' },
+      team: str('Filter by fantasy team name, owner or roster ID'),
+      include_pending: { type: 'boolean', description: 'Include failed/pending moves (default false)' },
+      limit: { type: 'integer', description: 'Max moves returned (default 50, max 200)' },
+    } },
+    async run(a, env) {
+      const ctx = await liveWeekContext(env, a);
+      const { id, base, week, league, players, teams } = ctx;
+      const selected = ctx.selectTeam(a.team);
+      if (a.team && !selected.length) return { error: `No team matches "${a.team}"`, teams: Object.values(teams).map(t => t.team_name) };
+      const n = Math.max(1, Math.min(8, parseInt(a.lookback_weeks ?? 2, 10) || 2));
+      const weeks = Array.from({ length: Math.min(n, week) }, (_, i) => week - i);
+      const batches = await Promise.all(weeks.map(w => getJSON(`${base}/transactions/${w}`, 60)));
+      const playerMove = ([sid, rid]) => ({
+        sleeper_id: String(sid), name: nameOf(sid, players),
+        roster_id: rid, team_name: teams[String(rid)]?.team_name || null,
+      });
+      const transactions = batches.flatMap((batch, i) => {
+        if (!Array.isArray(batch)) return [];
+        return batch.map(tx => {
+          const adds = Object.entries(tx.adds || {}).map(playerMove);
+          const drops = Object.entries(tx.drops || {}).map(playerMove);
+          return {
+            transaction_id: tx.transaction_id, week: tx.leg ?? weeks[i],
+            type: tx.type, status: tx.status,
+            created_at: tx.created ? new Date(tx.created).toISOString() : null,
+            status_updated_at: tx.status_updated ? new Date(tx.status_updated).toISOString() : null,
+            roster_ids: tx.roster_ids || [],
+            teams: (tx.roster_ids || []).map(rid => teams[String(rid)]?.team_name || String(rid)),
+            adds, drops, waiver_bid: tx.settings?.waiver_bid ?? null,
+            draft_picks: tx.draft_picks || [], waiver_budget: tx.waiver_budget || [],
+          };
+        });
+      }).filter(tx => (a.include_pending || tx.status === 'complete') &&
+        (!a.team || (tx.roster_ids || []).map(String).some(rid => selected.includes(rid)) ||
+          [...tx.adds, ...tx.drops].some(move => selected.includes(String(move.roster_id)))));
+      transactions.sort((x, y) => (Date.parse(y.created_at || 0) || 0) - (Date.parse(x.created_at || 0) || 0));
+      return {
+        league_id: id, league_name: league.name, week, weeks_checked: weeks,
+        fetched_at: new Date().toISOString(), total_found: transactions.length,
+        transactions: transactions.slice(0, clampLimit(a.limit, 50)),
+      };
+    },
+  },
   get_matchup: {
     description: 'Live weekly Sleeper NBA lineup: starters, bench, lineup positions, opponent and reported matchup scores. Explicit lock-in choices are NOT reliably available in the public API.',
     inputSchema: { type: 'object', properties: {
