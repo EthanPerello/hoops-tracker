@@ -8,4 +8,5 @@ workers_dev = true
 DATA_URL = "https://ethanperello.github.io/hoops-tracker"
 
 # Default Sleeper dynasty league; individual tools can override with league_id.
+# MCP exposes get_matchup and get_transactions with short-cache Sleeper data.
 DEFAULT_LEAGUE_ID = "1408140530877042688"
