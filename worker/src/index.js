@@ -306,7 +306,8 @@ const TOOLS = {
           return {
             sleeper_id: sid, name: p.name || null, team: p.team || null, positions: p.positions || [],
             lineup_position: starting ? (league.roster_positions || [])[ix] || null : 'BN',
-            reported_points: scoreFor(starting ? m.starters_points : m.players_points, sid, ix),
+            reported_points: scoreFor(starting ? m.starters_points : m.players_points,
+              sid, starting ? ix : (m.players || []).map(String).indexOf(sid)),
             lock_in_status: 'unknown',
           };
         };
@@ -426,6 +427,15 @@ export default {
       }
       const out = await handle(body, env);
       return out ? json(out) : new Response(null, { status: 202, headers: CORS });
+    }
+    // Plain JSON endpoints for clients that do not speak MCP. Same live data and safeguards.
+    if (url.pathname === '/api/matchup' || url.pathname === '/api/transactions') {
+      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405, headers: CORS });
+      const a = Object.fromEntries(url.searchParams.entries());
+      a.include_pending = a.include_pending === 'true';
+      const t = url.pathname === '/api/matchup' ? TOOLS.get_matchup : TOOLS.get_transactions;
+      try { return json(await t.run(a, env)); }
+      catch (e) { return json({ error: e.message }, 502); }
     }
     if (url.pathname === '/' || url.pathname === '/health') {
       return json({
