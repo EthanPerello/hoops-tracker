@@ -86,9 +86,53 @@ async function liveLeague(env, leagueId) {
   return {
     configured: true, live: true, league_id: id, name: lg.name, season: lg.season, status: lg.status,
     roster_positions: lg.roster_positions, scoring_settings_raw: lg.scoring_settings,
+    current_week: numericWeek(lg.settings?.leg), roster_slots_source: 'rosters; for week-specific starters/bench use get_matchup',
     note: 'Fantasy points (fppg) use the site\'s published scoring, which may differ from this league\'s; scoring_settings_raw is this league\'s.',
     teams, best_available,
   };
+}
+
+
+const parseLeagueId = value => String(value ?? '').match(/\d{6,}/)?.[0] || null;
+const numericWeek = value => { const n = Number(value); return Number.isInteger(n) && n > 0 && n < 100 ? n : null; };
+const nameOf = (id, players) => players[String(id)]?.name || null;
+const scoreFor = (values, id, index) => {
+  const v = Array.isArray(values) ? values[index] : values?.[id];
+  return typeof v === 'number' ? v : null;
+};
+
+// Matchups and transactions are public; NBA lock-in choices are not reliably exposed.
+// A reported fantasy score is not proof that a manager explicitly locked that game.
+async function liveWeekContext(env, args = {}) {
+  const id = parseLeagueId(args.league_id || env.DEFAULT_LEAGUE_ID ||
+    (await site(env, 'api/league.json')).league_id);
+  if (!id) throw new Error('Provide league_id or configure DEFAULT_LEAGUE_ID');
+  const root = env.SLEEPER_URL || SLEEPER;
+  const base = `${root}/league/${id}`;
+  const [league, users, rosters, all] = await Promise.all([
+    getJSON(base, 60), getJSON(`${base}/users`, 60),
+    getJSON(`${base}/rosters`, 60), site(env, 'api/players.json'),
+  ]);
+  if (!league?.league_id) throw new Error(`Sleeper league ${id} not found`);
+  let week = numericWeek(args.week) || numericWeek(league.settings?.leg);
+  if (!week) {
+    const nba = await getJSON(`${root}/state/nba`, 60);
+    week = numericWeek(nba.leg || nba.week);
+  }
+  if (!week) throw new Error('Current Sleeper NBA week unavailable; pass week explicitly');
+  const players = Object.fromEntries((all.players || []).filter(p => p.sleeper_id).map(p => [String(p.sleeper_id), p]));
+  const userMap = Object.fromEntries((users || []).map(u => [u.user_id, u]));
+  const teams = Object.fromEntries((rosters || []).map(r => {
+    const u = userMap[r.owner_id] || {};
+    return [String(r.roster_id), {
+      roster_id: r.roster_id, team_name: u.metadata?.team_name || u.display_name || `Team ${r.roster_id}`,
+      owner: u.display_name || null, roster: r,
+    }];
+  }));
+  const selectTeam = q => !q || Object.values(teams).filter(t =>
+    String(t.roster_id) === String(q) || fold(t.team_name).includes(fold(q)) ||
+    fold(t.owner).includes(fold(q))).map(t => String(t.roster_id));
+  return { id, base, week, league, players, teams, selectTeam };
 }
 
 // ---------------------------------------------------------------- tools
@@ -179,7 +223,7 @@ const TOOLS = {
       },
     },
     async run(a, env) {
-      const lg = a.league_id ? await liveLeague(env, a.league_id) : await site(env, 'api/league.json');
+      const lg = (a.league_id || env.DEFAULT_LEAGUE_ID) ? await liveLeague(env, a.league_id || env.DEFAULT_LEAGUE_ID) : await site(env, 'api/league.json');
       if (!lg.configured) return { ...lg, tip: 'Pass league_id (the number in the Sleeper league URL) to read a league live.' };
       if (!a.team) return lg;
       const q = fold(a.team);
