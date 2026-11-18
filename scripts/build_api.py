@@ -397,6 +397,16 @@ def build(out, league_id=None, site_url="", mcp_url=""):
             "sources": [x for x in freshness["ranking_sources"] if x["type"] == typ],
             "players": ranking_list(typ)})
 
+    # ---- live Sleeper weekly snapshot (non-fatal if endpoints fail)
+    if league:
+        weekly, recent_moves = add_weekly_snapshots(league, teams, by_sid, now)
+    else:
+        weekly = {"configured": False, "error": league_err or "Sleeper league not configured",
+                  "lock_in_data_available": False}
+        recent_moves = {"configured": False, "error": league_err or "Sleeper league not configured"}
+    write_json(api / "matchup.json", weekly)
+    write_json(api / "transactions.json", recent_moves)
+
     # ---- league
     if league:
         def roster_player(sid, t):
@@ -415,6 +425,10 @@ def build(out, league_id=None, site_url="", mcp_url=""):
             "season": league.get("season"), "status": league.get("status"),
             "total_rosters": league.get("total_rosters"), "roster_positions": league.get("roster_positions"),
             "scoring_settings_raw": league.get("scoring_settings"), "scoring": scoring_info,
+            "current_week": weekly.get("week"), "weekly_snapshot_fetched_at": now,
+            "lock_in_data_available": False,
+            "weekly_snapshot_errors": [weekly.get("error"), recent_moves.get("error")] if
+                weekly.get("error") or recent_moves.get("error") else None,
             "teams": [{k: v for k, v in t.items() if not k.startswith("_")}
                       | {"players": sorted((roster_player(x, t) for x in t["_players"]),
                                            key=lambda r: (r.get("ros_rank") or 9999))} for t in teams],
@@ -456,7 +470,9 @@ def build(out, league_id=None, site_url="", mcp_url=""):
                                   "{id} = the id field (the Sleeper player id for matched players)."),
         ("api/rankings/dynasty.json", "Consensus dynasty ranking with each source's rank."),
         ("api/rankings/ros.json", "Consensus rest-of-season ranking with each source's rank."),
-        ("api/league.json", "The configured Sleeper league: scoring, teams, records, rosters (with ranks/FPPG), best available players."),
+        ("api/league.json", "Configured Sleeper league with rosters, weekly_lineup and recent_transactions on each team (when available)."),
+        ("api/matchup.json", "Snapshot of Sleeper weekly starters/bench and reported points (NOT verified lock-ins)."),
+        ("api/transactions.json", "Recent completed Sleeper adds, drops, trades, FAAB bids and picks, fetched during deploy."),
         ("api/game_logs.json", "Bulk: every game log for every player in compact column form."),
         ("api/openapi.json", "OpenAPI 3.1 description of these endpoints."),
         ("llms.txt", "Plain-language guide for AI agents."),
@@ -473,6 +489,9 @@ def build(out, league_id=None, site_url="", mcp_url=""):
         "injury.games_missed": "Team games missed since the player's last appearance.",
         "fantasy_team": "Who has the player on the configured Sleeper league (null = available, or no league configured).",
         "fantasy_team.slot": "starter, bench, injured_reserve or taxi.",
+        "teams[].weekly_lineup": "Weekly starters/bench from Sleeper matchup endpoint; more accurate than general roster slot.",
+        "teams[].recent_transactions": "Completed transactions from last 3 weeks when available.",
+        "lock_in_data_available": "False: public Sleeper matchup points cannot confirm explicitly locked NBA games.",
     }
     write_json(api / "index.json", {
         "name": "Hoops Tracker API",
