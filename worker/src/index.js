@@ -301,7 +301,9 @@ const TOOLS = {
         const t = teams[String(m.roster_id)] || {};
         const starterIds = (m.starters || []).map(String);
         const starters = new Set(starterIds);
-        const benchIds = (m.players || t.roster?.players || []).map(String).filter(sid => !starters.has(sid));
+        const inactive = new Set([...(t.roster?.reserve || []), ...(t.roster?.taxi || [])].map(String));
+        const benchIds = (m.players || t.roster?.players || []).map(String)
+          .filter(sid => !starters.has(sid) && !inactive.has(sid));
         const mapped = (sid, ix, starting) => {
           const p = players[sid] || {};
           return {
@@ -317,7 +319,7 @@ const TOOLS = {
           roster_id: m.roster_id, team_name: t.team_name || null, owner: t.owner || null,
           opponent: opp ? (teams[String(opp.roster_id)]?.team_name || String(opp.roster_id)) : null,
           matchup_id: m.matchup_id, reported_team_points: m.points ?? null,
-          starting_lineup: starterIds.filter(sid => sid && sid !== '0').map((sid, i) => mapped(sid, i, true)),
+          starting_lineup: starterIds.map((sid, i) => sid && sid !== '0' ? mapped(sid, i, true) : null).filter(Boolean),
           bench: benchIds.map((sid, i) => mapped(sid, i, false)),
           injured_reserve: (t.roster?.reserve || []).map(pid => ({ sleeper_id: String(pid), name: nameOf(pid, players) })),
           taxi: (t.roster?.taxi || []).map(pid => ({ sleeper_id: String(pid), name: nameOf(pid, players) })),
