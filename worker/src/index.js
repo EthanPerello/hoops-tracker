@@ -142,7 +142,8 @@ const TOOLS = {
     description: 'Start here. Data freshness, the fantasy scoring used, ranking sources and their status, and the configured Sleeper league\'s teams and records.',
     inputSchema: { type: 'object', properties: {} },
     async run(_, env) {
-      const [idx, lg] = await Promise.all([site(env, 'api/index.json'), site(env, 'api/league.json')]);
+      const [idx, saved] = await Promise.all([site(env, 'api/index.json'), site(env, 'api/league.json')]);
+      const lg = env.DEFAULT_LEAGUE_ID ? await liveLeague(env, env.DEFAULT_LEAGUE_ID) : saved;
       return {
         description: idx.description, freshness: idx.freshness, scoring: idx.scoring, glossary: idx.glossary,
         league: lg.configured ? {
