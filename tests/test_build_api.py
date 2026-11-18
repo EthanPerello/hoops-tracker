@@ -85,6 +85,43 @@ class BuildApiTests(unittest.TestCase):
         self.assertEqual(star["game_logs"][-1]["fantasy_points"], 66.0)
         self.assertIsNone(self.load("api/players/200.json")["fantasy_team"])
 
+    def test_weekly_lineup_and_recent_moves(self):
+        def fake(url):
+            if url.endswith("/rosters"):
+                return [{"roster_id": 1, "owner_id": "u1",
+                         "players": ["100", "200"], "starters": ["100"],
+                         "reserve": ["200"], "taxi": [], "settings": {}}]
+            if url.endswith("/users"):
+                return USERS
+            if url.endswith("/matchups/5"):
+                return [{"roster_id": 1, "matchup_id": 1,
+                         "players": ["100", "200"], "starters": ["100"],
+                         "starters_points": [42.5], "points": 42.5}]
+            if url.endswith("/transactions/5"):
+                return [{"transaction_id": "tx1", "leg": 5, "type": "waiver",
+                         "status": "complete", "roster_ids": [1],
+                         "adds": {"100": 1}, "drops": {"200": 1},
+                         "settings": {"waiver_bid": 3}, "created": 1794900000000}]
+            if "/transactions/" in url:
+                return []
+            return {**LEAGUE, "settings": {"leg": 5}}
+
+        B.http_json = fake
+        res = B.build(self.out, "999")
+        self.assertTrue(res["league"])
+        t = self.load("api/league.json")["teams"][0]
+        self.assertEqual(t["weekly_lineup"]["week"], 5)
+        self.assertEqual(t["weekly_lineup"]["starting_lineup"][0]["name"], "Star Guard")
+        self.assertEqual(t["weekly_lineup"]["starting_lineup"][0]["lineup_position"], "PG")
+        self.assertEqual(t["weekly_lineup"]["bench"], [])
+        self.assertEqual(t["weekly_lineup"]["injured_reserve"][0]["name"], "Free Agent")
+        self.assertEqual(t["weekly_lineup"]["starting_lineup"][0]["lock_in_status"], "unknown")
+        self.assertFalse(t["weekly_lineup"]["lock_in_data_available"])
+        self.assertEqual(t["recent_transactions"][0]["adds"][0]["name"], "Star Guard")
+        self.assertEqual(t["recent_transactions"][0]["drops"][0]["name"], "Free Agent")
+        self.assertEqual(t["recent_transactions"][0]["waiver_bid"], 3)
+        self.assertEqual(self.load("api/transactions.json")["weeks_checked"], [5, 4, 3])
+
     def test_league_failure_is_not_fatal(self):
         def boom(url):
             raise OSError("network down")
