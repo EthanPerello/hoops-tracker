@@ -120,7 +120,7 @@ async function matchupWeek(env, lg, supplied) {
 const matchesTeam = (team, query) =>
   String(team.roster_id) === String(query) || fold(team.team_name).includes(fold(query)) || fold(team.owner).includes(fold(query));
 
-async function liveTransactions(env, a) {
+async function liveTransactions(a, env) {
   const lg = await liveLeague(env, requestedLeagueId(env, a.league_id));
   const currentWeek = await matchupWeek(env, lg, a.week);
   const back = a.week == null ? clampLimit(a.weeks_back, 3, 12) : 1;
@@ -165,7 +165,7 @@ async function liveTransactions(env, a) {
     transactions: filtered.slice(0, limit),
   };
 }
-async function liveMatchup(env, a) {
+async function liveMatchup(a, env) {
   const lg = await liveLeague(env, requestedLeagueId(env, a.league_id));
   const week = await matchupWeek(env, lg, a.week);
   const base = (env.SLEEPER_URL || SLEEPER) + '/league/' + lg.league_id;
