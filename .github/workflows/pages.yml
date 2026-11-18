@@ -36,7 +36,7 @@ jobs:
       - name: Build site + agent API (api/, llms.txt, openapi.json)
         run: python3 scripts/build_api.py _site
         env:
-          SLEEPER_LEAGUE_ID: ${{ vars.SLEEPER_LEAGUE_ID }}   # optional repo variable: publishes api/league.json + owners
+          SLEEPER_LEAGUE_ID: ${{ vars.SLEEPER_LEAGUE_ID || '1408140530877042688' }}   # optional repo variable: publishes api/league.json + owners
           SITE_URL: ${{ vars.SITE_URL }}                     # optional; defaults to https://<owner>.github.io/<repo>
           MCP_URL: ${{ vars.MCP_URL }}                       # optional: the deployed Worker's /mcp URL, advertised in llms.txt
       - uses: actions/configure-pages@v5

@@ -159,6 +159,122 @@ def build_league(lg, rosters, users):
     return teams, owners
 
 
+
+def add_weekly_snapshots(league, teams, by_sid, fetched_at):
+    """Best-effort snapshot of public Sleeper matchups and completed transactions.
+
+    This is intentionally separate from the main roster build: unavailable weekly
+    endpoints must never break publication of player rankings or league rosters.
+    Public matchup points are NOT verified NBA lock-in choices.
+    """
+    out = {"league_id": league["league_id"], "week": None, "fetched_at": fetched_at,
+           "source": "Sleeper public API; refreshed when GitHub Pages deploys",
+           "lock_in_data_available": False,
+           "lock_in_note": "Sleeper does not reliably expose explicitly locked NBA games in its public matchup API."}
+    recent = {"league_id": league["league_id"], "week": None, "fetched_at": fetched_at,
+              "weeks_checked": [], "transactions": []}
+    root = f"{SLEEPER}/league/{league['league_id']}"
+    try:
+        week = int((league.get("settings") or {}).get("leg") or 0)
+        if week <= 0:
+            state = http_json(f"{SLEEPER}/state/nba")
+            week = int((state or {}).get("leg") or (state or {}).get("week") or 0)
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = f"Cannot determine current league week: {exc}"
+        recent["error"] = out["error"]
+        return out, recent
+    if week <= 0 or week > 60:
+        out["error"] = "Current league week not available"
+        recent["error"] = out["error"]
+        return out, recent
+    out["week"] = recent["week"] = week
+    teams_by_id = {str(t["roster_id"]): t for t in teams}
+    def display(sid):
+        p = by_sid.get(str(sid)) or {}
+        return {"sleeper_id": str(sid), "name": p.get("name"),
+                "team": p.get("team"), "positions": p.get("positions") or []}
+
+    try:
+        matches = http_json(f"{root}/matchups/{week}")
+        if not isinstance(matches, list):
+            raise ValueError("Sleeper matchup endpoint did not return a list")
+        out["matchups"] = []
+        for m in matches:
+            t = teams_by_id.get(str(m.get("roster_id")))
+            if not t:
+                continue
+            ids = [str(s) if s else "" for s in (m.get("starters") or [])]
+            started = set(ids)
+            inactive = t["_reserve"] | t["_taxi"]
+            b_ids = [str(s) for s in (m.get("players") or t["_players"])
+                     if str(s) not in started and str(s) not in inactive]
+            sp = m.get("starters_points")
+            def score(sid, ix):
+                if isinstance(sp, list) and ix < len(sp):
+                    return sp[ix] if isinstance(sp[ix], (int, float)) else None
+                if isinstance(sp, dict):
+                    v = sp.get(sid)
+                    return v if isinstance(v, (int, float)) else None
+                return None
+            others = [x for x in matches if x.get("matchup_id") == m.get("matchup_id")
+                      and x.get("roster_id") != m.get("roster_id")]
+            opponent = teams_by_id.get(str(others[0]["roster_id"]), {}).get("team_name") if others else None
+            lineup = {
+                "week": week, "matchup_id": m.get("matchup_id"), "opponent": opponent,
+                "reported_team_points": m.get("points"),
+                "lock_in_data_available": False,
+                "starting_lineup": [{**display(sid),
+                                      "lineup_position": (league.get("roster_positions") or [])[ix]
+                                      if ix < len(league.get("roster_positions") or []) else None,
+                                      "reported_points": score(sid, ix), "lock_in_status": "unknown"}
+                                     for ix, sid in enumerate(ids) if sid and sid != "0"],
+                "bench": [display(sid) for sid in b_ids],
+                "injured_reserve": [display(sid) for sid in sorted(t["_reserve"])],
+                "taxi": [display(sid) for sid in sorted(t["_taxi"])],
+            }
+            t["weekly_lineup"] = lineup
+            out["matchups"].append({"roster_id": t["roster_id"], "team_name": t["team_name"], **lineup})
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = str(exc)
+
+    transactions = []
+    for w in range(week, max(0, week - 3), -1):
+        try:
+            batch = http_json(f"{root}/transactions/{w}")
+            if not isinstance(batch, list):
+                raise ValueError("Sleeper transactions endpoint did not return a list")
+            recent["weeks_checked"].append(w)
+            for tx in batch:
+                if tx.get("status") != "complete":
+                    continue
+                def moves(kind):
+                    return [{"sleeper_id": str(sid), "name": display(sid)["name"],
+                             "roster_id": rid,
+                             "team_name": teams_by_id.get(str(rid), {}).get("team_name")}
+                            for sid, rid in (tx.get(kind) or {}).items()]
+                transactions.append({
+                    "transaction_id": tx.get("transaction_id"), "week": tx.get("leg") or w,
+                    "type": tx.get("type"), "status": tx.get("status"),
+                    "created_at_ms": tx.get("created"),
+                    "roster_ids": tx.get("roster_ids") or [],
+                    "adds": moves("adds"), "drops": moves("drops"),
+                    "waiver_bid": (tx.get("settings") or {}).get("waiver_bid"),
+                    "waiver_budget": tx.get("waiver_budget") or [],
+                    "draft_picks": tx.get("draft_picks") or [],
+                })
+        except Exception as exc:  # noqa: BLE001
+            recent.setdefault("errors", []).append({"week": w, "error": str(exc)})
+    transactions.sort(key=lambda tx: tx.get("created_at_ms") or 0, reverse=True)
+    recent["transactions"] = transactions
+    for t in teams:
+        rid = str(t["roster_id"])
+        t["recent_transactions"] = [
+            tx for tx in transactions if rid in set(map(str, tx["roster_ids"])) or
+            any(str(m["roster_id"]) == rid for m in tx["adds"] + tx["drops"])
+        ][:25]
+    return out, recent
+
+
 # ----------------------------------------------------------------- main build
 def build(out, league_id=None, site_url="", mcp_url=""):
     players = read_json(DATA / "players.json")
@@ -281,6 +397,16 @@ def build(out, league_id=None, site_url="", mcp_url=""):
             "sources": [x for x in freshness["ranking_sources"] if x["type"] == typ],
             "players": ranking_list(typ)})
 
+    # ---- live Sleeper weekly snapshot (non-fatal if endpoints fail)
+    if league:
+        weekly, recent_moves = add_weekly_snapshots(league, teams, by_sid, now)
+    else:
+        weekly = {"configured": False, "error": league_err or "Sleeper league not configured",
+                  "lock_in_data_available": False}
+        recent_moves = {"configured": False, "error": league_err or "Sleeper league not configured"}
+    write_json(api / "matchup.json", weekly)
+    write_json(api / "transactions.json", recent_moves)
+
     # ---- league
     if league:
         def roster_player(sid, t):
@@ -299,6 +425,10 @@ def build(out, league_id=None, site_url="", mcp_url=""):
             "season": league.get("season"), "status": league.get("status"),
             "total_rosters": league.get("total_rosters"), "roster_positions": league.get("roster_positions"),
             "scoring_settings_raw": league.get("scoring_settings"), "scoring": scoring_info,
+            "current_week": weekly.get("week"), "weekly_snapshot_fetched_at": now,
+            "lock_in_data_available": False,
+            "weekly_snapshot_errors": [weekly.get("error"), recent_moves.get("error")] if
+                weekly.get("error") or recent_moves.get("error") else None,
             "teams": [{k: v for k, v in t.items() if not k.startswith("_")}
                       | {"players": sorted((roster_player(x, t) for x in t["_players"]),
                                            key=lambda r: (r.get("ros_rank") or 9999))} for t in teams],
@@ -340,7 +470,9 @@ def build(out, league_id=None, site_url="", mcp_url=""):
                                   "{id} = the id field (the Sleeper player id for matched players)."),
         ("api/rankings/dynasty.json", "Consensus dynasty ranking with each source's rank."),
         ("api/rankings/ros.json", "Consensus rest-of-season ranking with each source's rank."),
-        ("api/league.json", "The configured Sleeper league: scoring, teams, records, rosters (with ranks/FPPG), best available players."),
+        ("api/league.json", "Configured Sleeper league with rosters, weekly_lineup and recent_transactions on each team (when available)."),
+        ("api/matchup.json", "Snapshot of Sleeper weekly starters/bench and reported points (NOT verified lock-ins)."),
+        ("api/transactions.json", "Recent completed Sleeper adds, drops, trades, FAAB bids and picks, fetched during deploy."),
         ("api/game_logs.json", "Bulk: every game log for every player in compact column form."),
         ("api/openapi.json", "OpenAPI 3.1 description of these endpoints."),
         ("llms.txt", "Plain-language guide for AI agents."),
@@ -357,6 +489,9 @@ def build(out, league_id=None, site_url="", mcp_url=""):
         "injury.games_missed": "Team games missed since the player's last appearance.",
         "fantasy_team": "Who has the player on the configured Sleeper league (null = available, or no league configured).",
         "fantasy_team.slot": "starter, bench, injured_reserve or taxi.",
+        "teams[].weekly_lineup": "Weekly starters/bench from Sleeper matchup endpoint; more accurate than general roster slot.",
+        "teams[].recent_transactions": "Completed transactions from last 3 weeks when available.",
+        "lock_in_data_available": "False: public Sleeper matchup points cannot confirm explicitly locked NBA games.",
     }
     write_json(api / "index.json", {
         "name": "Hoops Tracker API",
@@ -399,6 +534,10 @@ def openapi(site_url):
                                          "Compact list sorted by rank, with each source's rank, FPPG, injury and fantasy team."),
             "/api/rankings/dynasty.json": op("getDynastyRankings", "Dynasty consensus rankings",
                                              "Compact list sorted by rank, with each source's rank, FPPG, injury and fantasy team."),
+            "/api/matchup.json": op("getMatchupSnapshot", "Latest Sleeper weekly matchup lineup snapshot",
+                                    "Starting players, bench, opponent and reported points. Not verified NBA lock-ins."),
+            "/api/transactions.json": op("getTransactionsSnapshot", "Latest Sleeper transaction snapshot",
+                                        "Recent completed adds, drops, trades, waiver bids and draft picks."),
             "/api/league.json": op("getLeague", "Sleeper league: teams, rosters, records, best available",
                                    "Scoring settings, every team's roster with ranks and FPPG, and the top available players."),
             "/api/players/{id}.json": op("getPlayer", "One player with full game logs",
@@ -436,6 +575,9 @@ league: {league.get('name') if league else 'not configured'}.
 - [ROS rankings]({u}api/rankings/ros.json): consensus rest-of-season ranking, each source's rank, FPPG, injury, fantasy team.
 - [Dynasty rankings]({u}api/rankings/dynasty.json): same for dynasty / long-term value.
 - [Sleeper league]({u}api/league.json): scoring, every team's roster (ranks, FPPG, slot), records, best available players.
+- [Weekly matchup snapshot]({u}api/matchup.json): starters, bench, positions and reported points; NOT verified lock-ins.
+- [Recent transaction snapshot]({u}api/transactions.json): adds, drops, trades and FAAB.
+
 - [All players]({u}api/players.json): every player with rankings, season + last-5 averages, FPPG, injury, owner (large).
 - Player detail: {u}api/players/{{id}}.json — adds every game log with fantasy points. `id` comes from any list
   (it is the Sleeper player id for matched players).

@@ -1,0 +1,21 @@
+name: Test Hoops Tracker static API
+
+on:
+  push:
+    branches: [claude/serene-turing-6exmqg, feature/static-sleeper-weekly-snapshots]
+    paths: ["scripts/build_api.py", "tests/**", ".github/workflows/api-test.yml"]
+  pull_request:
+    paths: ["scripts/build_api.py", "tests/**", ".github/workflows/api-test.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 -m unittest discover tests
