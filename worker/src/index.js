@@ -11,6 +11,7 @@ const PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const SLEEPER = 'https://api.sleeper.app/v1';
 const CACHE_TTL = 300; // seconds; the site rebuilds ~3x a day
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
+const LOCK_NOTE = 'Sleeper public matchup data does not document individual NBA Lock-In selections. Public points are not confirmed locked game scores.';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -86,8 +87,127 @@ async function liveLeague(env, leagueId) {
   return {
     configured: true, live: true, league_id: id, name: lg.name, season: lg.season, status: lg.status,
     roster_positions: lg.roster_positions, scoring_settings_raw: lg.scoring_settings,
+    current_week_hint: lg.settings?.leg ?? null,
     note: 'Fantasy points (fppg) use the site\'s published scoring, which may differ from this league\'s; scoring_settings_raw is this league\'s.',
     teams, best_available,
+  };
+}
+
+
+// Get the current NBA matchup week from Sleeper state instead of guessing by date.
+function requestedLeagueId(env, supplied) {
+  const id = String(supplied || env.DEFAULT_LEAGUE_ID || '').match(/(\d{6,})/)?.[1];
+  if (!id) throw new Error('Pass a Sleeper league_id, or configure DEFAULT_LEAGUE_ID on the Worker.');
+  return id;
+}
+async function matchupWeek(env, lg, supplied) {
+  if (supplied !== undefined && supplied !== null && String(supplied) !== '') {
+    const n = Number(supplied);
+    if (!Number.isInteger(n) || n < 1 || n > 60) throw new Error('week must be an integer between 1 and 60');
+    return n;
+  }
+  try {
+    const state = await getJSON((env.SLEEPER_URL || SLEEPER) + '/state/nba', 45);
+    if ([state?.season, state?.league_season].some(s => String(s) === String(lg.season))) {
+      const n = Number(state?.leg ?? state?.week);
+      if (Number.isInteger(n) && n >= 1 && n <= 60) return n;
+    }
+  } catch (_) { /* fallback to the league's own current leg */ }
+  const n = Number(lg.current_week_hint);
+  if (Number.isInteger(n) && n >= 1 && n <= 60) return n;
+  throw new Error('Could not determine the current NBA matchup week; pass week explicitly.');
+}
+const matchesTeam = (team, query) =>
+  String(team.roster_id) === String(query) || fold(team.team_name).includes(fold(query)) || fold(team.owner).includes(fold(query));
+
+async function liveTransactions(a, env) {
+  const lg = await liveLeague(env, requestedLeagueId(env, a.league_id));
+  const currentWeek = await matchupWeek(env, lg, a.week);
+  const back = a.week == null ? clampLimit(a.weeks_back, 3, 12) : 1;
+  const weeks = Array.from({ length: back }, (_, i) => currentWeek - i).filter(n => n >= 1);
+  const base = (env.SLEEPER_URL || SLEEPER) + '/league/' + lg.league_id;
+  const batches = await Promise.all(weeks.map(w => getJSON(base + '/transactions/' + w, 45)));
+  const allPlayers = await site(env, 'api/players.json');
+  const nameById = Object.fromEntries(allPlayers.players.filter(p => p.sleeper_id).map(p => [String(p.sleeper_id), p.name]));
+  const teamById = Object.fromEntries(lg.teams.map(t => [String(t.roster_id), t]));
+  const annotate = (p, rid) => ({
+    player_id: String(p), name: nameById[String(p)] ?? null,
+    roster_id: Number(rid), team_name: teamById[String(rid)]?.team_name ?? null,
+  });
+  const rows = weeks.flatMap((week, i) => (Array.isArray(batches[i]) ? batches[i] : []).map(tr => {
+    const adds = Object.entries(tr.adds || {}).map(([p, rid]) => annotate(p, rid));
+    const drops = Object.entries(tr.drops || {}).map(([p, rid]) => annotate(p, rid));
+    const picks = (tr.draft_picks || []).map(p => ({
+      ...p, new_owner_name: teamById[String(p.owner_id)]?.team_name ?? null,
+      previous_owner_name: teamById[String(p.previous_owner_id)]?.team_name ?? null,
+    }));
+    const timestamp = Number(tr.status_updated);
+    return {
+      transaction_id: tr.transaction_id, week: tr.leg ?? week, type: tr.type, status: tr.status,
+      updated_at: Number.isFinite(timestamp) && timestamp > 0 ? new Date(timestamp).toISOString() : null,
+      roster_ids: tr.roster_ids || [], teams: (tr.roster_ids || []).map(id => teamById[String(id)]?.team_name ?? ('Roster ' + id)),
+      adds, drops, draft_picks: picks, faab_bid: tr.settings?.waiver_bid ?? null,
+      metadata: tr.metadata ?? null,
+    };
+  }));
+  const filtered = a.team ? rows.filter(tr => {
+    const teamIds = lg.teams.filter(t => matchesTeam(t, a.team)).map(t => t.roster_id);
+    return teamIds.some(rid => tr.roster_ids.some(x => String(x) === String(rid))
+      || [...tr.adds, ...tr.drops].some(p => String(p.roster_id) === String(rid))
+      || tr.draft_picks.some(p => String(p.owner_id) === String(rid) || String(p.previous_owner_id) === String(rid)));
+  }) : rows;
+  filtered.sort((a, b) => (Date.parse(b.updated_at) || 0) - (Date.parse(a.updated_at) || 0));
+  const limit = clampLimit(a.limit, 50, 200);
+  return {
+    league_id: lg.league_id, league: lg.name, weeks_checked: weeks,
+    total: filtered.length, showing: Math.min(limit, filtered.length),
+    note: 'Sleeper public transactions include free agents, waivers, trades and picks; pending claims may not be exposed.',
+    transactions: filtered.slice(0, limit),
+  };
+}
+async function liveMatchup(a, env) {
+  const lg = await liveLeague(env, requestedLeagueId(env, a.league_id));
+  const week = await matchupWeek(env, lg, a.week);
+  const base = (env.SLEEPER_URL || SLEEPER) + '/league/' + lg.league_id;
+  const [raw, all] = await Promise.all([
+    getJSON(base + '/matchups/' + week, 45), site(env, 'api/players.json'),
+  ]);
+  if (!Array.isArray(raw)) throw new Error('Sleeper returned no matchups for week ' + week);
+  const players = Object.fromEntries(all.players.filter(p => p.sleeper_id).map(p => [String(p.sleeper_id), p]));
+  const teamById = Object.fromEntries(lg.teams.map(t => [String(t.roster_id), t]));
+  const describe = (id, index = null, roster = null) => {
+    const p = players[String(id)], onRoster = roster?.players?.find(x => String(x.sleeper_id) === String(id));
+    return {
+      player_id: String(id), name: p?.name ?? onRoster?.name ?? null,
+      nba_team: p?.team ?? onRoster?.team ?? null,
+      lineup_position: index == null ? null : lg.roster_positions?.[index] ?? null,
+      current_roster_slot: onRoster?.slot ?? null,
+    };
+  };
+  let rows = raw.map(m => {
+    const t = teamById[String(m.roster_id)] ?? null;
+    const starterIds = (m.starters || []).filter(id => id && id !== '0');
+    const starts = new Set(starterIds.map(String));
+    const benchIds = (m.players || []).filter(id => id && !starts.has(String(id)));
+    return {
+      roster_id: m.roster_id, team_name: t?.team_name ?? null, owner: t?.owner ?? null,
+      matchup_id: m.matchup_id ?? null, public_points: m.points ?? null,
+      custom_points: m.custom_points ?? null,
+      starters: (m.starters || []).map((id, i) => (!id || id === '0' ? null : describe(id, i, t))).filter(Boolean),
+      bench: benchIds.map(id => describe(id, null, t)),
+      current_ir: (t?.players || []).filter(p => p.slot === 'injured_reserve').map(p => ({ player_id: p.sleeper_id, name: p.name })),
+      current_taxi: (t?.players || []).filter(p => p.slot === 'taxi').map(p => ({ player_id: p.sleeper_id, name: p.name })),
+    };
+  });
+  if (a.team) {
+    const ids = new Set(rows.filter(r => matchesTeam(r, a.team)).map(r => r.matchup_id));
+    rows = rows.filter(r => ids.has(r.matchup_id));
+  }
+  return {
+    league_id: lg.league_id, league: lg.name, week, roster_positions: lg.roster_positions,
+    lineups_source: 'Sleeper weekly matchup starters; current_roster_slot is the live roster state',
+    lock_ins: { available: false, source: 'public_sleeper_api', note: LOCK_NOTE },
+    matchups: rows,
   };
 }
 
@@ -98,7 +218,11 @@ const TOOLS = {
     description: 'Start here. Data freshness, the fantasy scoring used, ranking sources and their status, and the configured Sleeper league\'s teams and records.',
     inputSchema: { type: 'object', properties: {} },
     async run(_, env) {
-      const [idx, lg] = await Promise.all([site(env, 'api/index.json'), site(env, 'api/league.json')]);
+      const [idx, staticLeague] = await Promise.all([site(env, 'api/index.json'), site(env, 'api/league.json')]);
+      let lg = staticLeague;
+      if (env.DEFAULT_LEAGUE_ID) {
+        try { lg = await liveLeague(env, env.DEFAULT_LEAGUE_ID); } catch (_) { /* static fallback */ }
+      }
       return {
         description: idx.description, freshness: idx.freshness, scoring: idx.scoring, glossary: idx.glossary,
         league: lg.configured ? {
@@ -179,13 +303,38 @@ const TOOLS = {
       },
     },
     async run(a, env) {
-      const lg = a.league_id ? await liveLeague(env, a.league_id) : await site(env, 'api/league.json');
+      const lg = (a.league_id || env.DEFAULT_LEAGUE_ID) ? await liveLeague(env, a.league_id || env.DEFAULT_LEAGUE_ID) : await site(env, 'api/league.json');
       if (!lg.configured) return { ...lg, tip: 'Pass league_id (the number in the Sleeper league URL) to read a league live.' };
       if (!a.team) return lg;
       const q = fold(a.team);
       const teams = lg.teams.filter(t => String(t.roster_id) === String(a.team) || fold(t.team_name).includes(q) || fold(t.owner).includes(q));
-      return teams.length ? { name: lg.name, teams } : { error: `No team matches "${a.team}"`, teams: lg.teams.map(t => t.team_name) };
+      return teams.length ? { league_id: lg.league_id, name: lg.name, roster_positions: lg.roster_positions, teams } : { error: `No team matches "${a.team}"`, teams: lg.teams.map(t => t.team_name) };
     },
+  },
+
+  get_transactions: {
+    description: 'Live Sleeper transaction history: add/drop, waiver, free-agent and trade moves (including traded picks and FAAB bids). Defaults to the last 3 matchup weeks in the configured league. Filter by team or week.',
+    inputSchema: {
+      type: 'object', properties: {
+        league_id: str('Sleeper league ID or URL (optional when a default league is configured)'),
+        team: str('Filter moves involving this team: roster id, owner or part of team name'),
+        week: { type: 'integer', description: 'One exact Sleeper matchup week; omitted = recent weeks' },
+        weeks_back: { type: 'integer', description: 'Weeks to scan backward, default 3, max 12; ignored if week given' },
+        limit: { type: 'integer', description: 'Default 50, max 200' },
+      },
+    },
+    run: liveTransactions,
+  },
+  get_matchup: {
+    description: 'Live weekly Sleeper matchup and starting lineup, including bench, current IR/taxi players, opponent and public matchup score. Lock-In selections are NOT available from the documented public API; public points are not confirmed locked points.',
+    inputSchema: {
+      type: 'object', properties: {
+        league_id: str('Sleeper league ID or URL (optional when a default league is configured)'),
+        team: str('Optional roster id, owner or team name; returns opponent too'),
+        week: { type: 'integer', description: 'Sleeper matchup week (defaults to current NBA week)' },
+      },
+    },
+    run: liveMatchup,
   },
   // search + fetch follow OpenAI's connector convention (ChatGPT deep research / company knowledge).
   search: {
@@ -242,7 +391,9 @@ async function handle(msg, env) {
         serverInfo: { name: 'hoops-tracker', title: 'Hoops Tracker', version: '1.0.0' },
         instructions: 'NBA fantasy basketball data for a Sleeper points league: consensus dynasty and rest-of-season rankings, '
           + 'per-game stats and fantasy points, injuries, and Sleeper league rosters. Start with get_overview; use search_players '
-          + 'or get_rankings for lists, get_player for one player, get_league for rosters and available players.',
+          + 'or get_rankings for lists, get_player for one player, get_league for rosters, '
+          + 'get_transactions for adds/drops/trades, get_matchup for starters/bench and opponents. '
+          + 'Public Sleeper data cannot confirm NBA Lock-In selections.',
       });
     }
     case 'ping': return ok({});
@@ -282,6 +433,16 @@ export default {
       }
       const out = await handle(body, env);
       return out ? json(out) : new Response(null, { status: 202, headers: CORS });
+    }
+    if (['/api/league', '/api/matchup', '/api/transactions'].includes(url.pathname)) {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      const action = { '/api/league': 'get_league', '/api/matchup': 'get_matchup', '/api/transactions': 'get_transactions' }[url.pathname];
+      try {
+        const result = await TOOLS[action].run(Object.fromEntries(url.searchParams.entries()), env);
+        return json(result, result.error ? 400 : 200, { 'Cache-Control': 'no-store' });
+      } catch (e) {
+        return json({ error: e.message }, 400);
+      }
     }
     if (url.pathname === '/' || url.pathname === '/health') {
       return json({
