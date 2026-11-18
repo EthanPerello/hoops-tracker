@@ -28,6 +28,9 @@ Fantasy points are already calculated, so agents don't need to implement scoring
 | `api/index.json` | Catalog: freshness, ranking-source status, scoring used, field glossary |
 | `api/rankings/ros.json`, `api/rankings/dynasty.json` | Consensus rankings with each source's rank, FPPG, injury, fantasy team |
 | `api/league.json` | Sleeper league: scoring, teams + records, rosters (ranks, FPPG, lineup slot), best available |
+| `api/matchup.json` | Recent Sleeper matchup snapshot: weekly starting lineup, bench, opponents and reported scores (not verified lock-ins) |
+| `api/transactions.json` | Recent completed adds/drops/trades, FAAB and draft picks, with names and timestamps |
+
 | `api/players.json` | Every player in full (large, ~380 KB) |
 | `api/players/{id}.json` | One player with every game log and fantasy points per game (`id` = Sleeper player id) |
 | `api/game_logs.json` | Bulk box-score lines, compact columns |
@@ -36,6 +39,13 @@ Fantasy points are already calculated, so agents don't need to implement scoring
 **Sleeper league:** set the repository variable `SLEEPER_LEAGUE_ID` (Settings → Secrets and variables → Actions →
 Variables). The workflow then publishes `api/league.json`, adds `fantasy_team` to every player and calculates fantasy points with the
 league's scoring. Without it, the API uses the default scoring and `league.json` explains how to set it up.
+The Pages deployment workflow defaults to Deadball Dynasty (league `1408140530877042688`) if no `SLEEPER_LEAGUE_ID`
+variable is set. The new `api/league.json` team rows include `weekly_lineup` and `recent_transactions` snapshots
+when Sleeper returns them, so the existing MCP `get_league` tool can read them **even before the Worker is redeployed**.
+These snapshots only update during Pages builds (roughly three times daily); use the Worker's live
+`get_matchup` / `get_transactions` tools for more current information once Cloudflare deployment is configured.
+Neither source establishes exact NBA lock-in choices.
+
 
 **Optional remote MCP server** (`worker/`, a Cloudflare Worker, free tier): lets ChatGPT, Claude and other MCP clients connect
 with just a URL and query the data with tools. Those tools are `get_overview`, `search_players`, `get_player`, `get_rankings`,
