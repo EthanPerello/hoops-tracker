@@ -1,0 +1,19 @@
+name: Test Hoops Tracker MCP
+
+on:
+  pull_request:
+    paths: ["worker/**", ".github/workflows/worker-test.yml"]
+  push:
+    branches: [claude/serene-turing-6exmqg]
+    paths: ["worker/**", ".github/workflows/worker-test.yml"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test worker/test/*.test.js
