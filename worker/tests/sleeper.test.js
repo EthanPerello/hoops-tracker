@@ -67,7 +67,8 @@ test('get_matchup returns week starters, bench, positions and opponent without i
   assert.equal(t.opponent, 'other');
   assert.deepEqual(t.starting_lineup.map(p => p.name), ['Star One', 'Star Two']);
   assert.deepEqual(t.starting_lineup.map(p => p.lineup_position), ['PG', 'SG']);
-  assert.deepEqual(t.bench.map(p => p.name), ['Bench Three', 'IR Four']);
+  assert.deepEqual(t.bench.map(p => p.name), ['Bench Three']);
+  assert.deepEqual(t.injured_reserve.map(p => p.name), ['IR Four']);
   assert.equal(t.bench[0].reported_points, 35);
   assert.equal(t.starting_lineup[0].reported_points, 41.5);
   assert.equal(t.starting_lineup[0].lock_in_status, 'unknown');
