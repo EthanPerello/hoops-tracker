@@ -39,8 +39,32 @@ league's scoring. Without it, the API uses the default scoring and `league.json`
 
 **Optional remote MCP server** (`worker/`, a Cloudflare Worker, free tier): lets ChatGPT, Claude and other MCP clients connect
 with just a URL and query the data with tools. Those tools are `get_overview`, `search_players`, `get_player`, `get_rankings`
-and `get_league` (it also reads any Sleeper league live when given a `league_id`), plus `search`/`fetch` in the format
+and `get_league` (it also reads any Sleeper league live when given a `league_id`), `get_matchup` (live weekly starters, bench, positions and reported points), and `get_transactions` (actual adds/drops/trades, FAAB and picks), plus `search`/`fetch` in the format
 ChatGPT connectors expect. It reads the Pages JSON live, so data updates never need a redeploy.
+
+### Live weekly lineups and transactions
+
+The Cloudflare MCP Worker also serves plain JSON endpoints (not just MCP) that query Sleeper on request
+with a 60-second cache. Unlike the daily GitHub Pages snapshots, these reflect near-current lineup changes.
+
+| Worker endpoint | Data |
+|---|---|
+| `GET /api/matchup?team=ethanperello` | Current weekly starting lineup, bench, starting positions, opponent, Sleeper-reported scores, IR and taxi |
+| `GET /api/matchup?week=5&team=5` | A chosen week's lineup; `team` may be roster ID, team name or owner |
+| `GET /api/transactions?team=5` | Completed transactions from the current and previous week, newest first |
+| `GET /api/transactions?lookback_weeks=8&team=5` | Longer add/drop/trade history; FAAB bids and traded draft picks |
+| `GET /api/transactions?week=5&include_pending=true` | Pending and failed moves too |
+
+The MCP tools `get_matchup` and `get_transactions` have the same fields and filters, plus a
+`league_id` override for any public Sleeper league. The Worker defaults to the league in
+`worker/wrangler.toml` (`DEFAULT_LEAGUE_ID`), so it works without specifying a league ID.
+
+**Important NBA Lock-In limitation:** Sleeper's public matchup endpoint does **not** reliably
+expose which individual games a manager explicitly locked. `lock_in_data_available: false` and
+`lock_in_status: "unknown"` are intentional. Even `reported_points`, `starters_points`, or
+the matchup total should not be interpreted as proof that a given game has been locked in.
+To get exact lock-ins, use a user-supplied list/screenshot or a separately authenticated sync
+designed and tested for the lock-in state. The Worker never guesses it.
 
 Deploy once, from your computer (needs Node.js and a free Cloudflare account):
 ```
