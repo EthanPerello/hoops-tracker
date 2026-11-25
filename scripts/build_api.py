@@ -31,6 +31,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+import market_data
+
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 SLEEPER = "https://api.sleeper.app/v1"
@@ -276,7 +278,7 @@ def add_weekly_snapshots(league, teams, by_sid, fetched_at):
 
 
 # ----------------------------------------------------------------- main build
-def build(out, league_id=None, site_url="", mcp_url=""):
+def build(out, league_id=None, site_url="", mcp_url="", market=None):
     players = read_json(DATA / "players.json")
     meta = read_json(DATA / "meta.json")
     fields = meta["log_fields"]
@@ -298,6 +300,8 @@ def build(out, league_id=None, site_url="", mcp_url=""):
             league_err = str(e)
             print(f"Sleeper league {league_id}: FAILED ({e}); league data not published", file=sys.stderr)
 
+    market_rows, market_status = market if market is not None else ({}, {})
+    raw_scoring = (league or {}).get("scoring_settings") or scoring
     src_meta = {s["id"]: s for s in meta.get("sources", [])}
 
     def owner_of(p):
@@ -344,6 +348,7 @@ def build(out, league_id=None, site_url="", mcp_url=""):
              "rankings": {"dynasty": rankings(p, "dynasty"), "ros": rankings(p, "ros")},
              "season": averages(games), "last5": averages(games[-5:]),
              "fantasy_team": owner_of(p) if league else None,
+             **market_data.metrics(p, games, market_rows, raw_scoring),
              "detail_url": abs_(f"api/players/{pid}.json")}
         summaries.append(s)
         log_keys = ["date", "opp", "home", "min", "pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "to",
@@ -364,6 +369,7 @@ def build(out, league_id=None, site_url="", mcp_url=""):
                              "source_says_updated": s.get("source_updated"), "error": s.get("error")}
                             for s in meta.get("sources", [])],
         "league_fetched_at": now if league else None,
+        "market_sources": market_status,
     }
     scoring_info = {"source": scoring_source, "settings": scoring,
                     "unmapped_sleeper_keys": unmapped or None,
@@ -388,6 +394,7 @@ def build(out, league_id=None, site_url="", mcp_url=""):
         return [{"rank": s["rankings"][typ]["consensus"], "avg_rank": s["rankings"][typ]["avg"],
                  "sources": s["rankings"][typ]["sources"], "id": s["id"], "name": s["name"], "team": s["team"],
                  "positions": s["positions"], "fppg": (s["season"] or {}).get("fppg"),
+                 **{k: s[k] for k in ("roster_pct", "roster_pct_source", "trending", "projected_fppg", "projection_source", "daily_projections")},
                  "injury_status": (s["injury"] or {}).get("status"),
                  "fantasy_team": (s["fantasy_team"] or {}).get("team_name") if league else None} for s in rows]
     for typ, label in (("dynasty", "Dynasty (long-term value)"), ("ros", "Rest of season")):
@@ -419,7 +426,8 @@ def build(out, league_id=None, site_url="", mcp_url=""):
                     "slot": slot, "dynasty_rank": (s["rankings"]["dynasty"] or {}).get("consensus"),
                     "ros_rank": (s["rankings"]["ros"] or {}).get("consensus"),
                     "fppg": (s["season"] or {}).get("fppg"), "last5_fppg": (s["last5"] or {}).get("fppg"),
-                    "injury_status": (s["injury"] or {}).get("status")}
+                    **{k: s[k] for k in ("roster_pct", "roster_pct_source", "trending", "projected_fppg", "projection_source", "daily_projections")},
+                 "injury_status": (s["injury"] or {}).get("status")}
         league_out = {
             "configured": True, "league_id": league["league_id"], "name": league.get("name"),
             "season": league.get("season"), "status": league.get("status"),
@@ -436,7 +444,8 @@ def build(out, league_id=None, site_url="", mcp_url=""):
                                 "ros_rank": s["rankings"]["ros"]["consensus"],
                                 "dynasty_rank": (s["rankings"]["dynasty"] or {}).get("consensus"),
                                 "fppg": (s["season"] or {}).get("fppg"), "last5_fppg": (s["last5"] or {}).get("fppg"),
-                                "injury_status": (s["injury"] or {}).get("status")}
+                                **{k: s[k] for k in ("roster_pct", "roster_pct_source", "trending", "projected_fppg", "projection_source", "daily_projections")},
+                 "injury_status": (s["injury"] or {}).get("status")}
                                for s in summaries if s["sleeper_id"] and not s["fantasy_team"]
                                and s["rankings"]["ros"]][:60],
             "fetched_at": now,
@@ -484,6 +493,10 @@ def build(out, league_id=None, site_url="", mcp_url=""):
         "dynasty": "Long-term (keeper/dynasty) value.", "ros": "Rest-of-season value.",
         "season / last5": "Per-game averages over the season / the player's last 5 games played (DNPs excluded).",
         "fppg": "Fantasy points per game under the scoring described in 'scoring'.",
+        "roster_pct": "Platform-wide percent rostered (0-100), labeled Sleeper or ESPN; not league-specific. Null if unavailable.",
+        "trending": "Sleeper platform adds/drops over 24 and 168 hours. Null means absent from top 100 or unavailable, NOT zero. See freshness.market_sources.",
+        "projected_fppg": "Hoops Tracker conditional-on-playing estimate blending season and last five actual fantasy scores; NOT an official or schedule-adjusted projection.",
+        "daily_projections": "Optional Sleeper daily raw-stat projections scored with league settings. Missing scoring keys produce partial_points, NOT projected_points.",
         "mpg": "Minutes per game.", "fg_pct / ft_pct": "Percentages, 0-100.", "tpm": "3-pointers made.",
         "injury.est_games_out": "Estimated games still to miss (estimated from ESPN's report; null if unknown).",
         "injury.games_missed": "Team games missed since the player's last appearance.",
@@ -588,6 +601,9 @@ league: {league.get('name') if league else 'not configured'}.
 
 - Ranks: 1 = best. `consensus` = average of the sources that rank the player, re-ranked. `sources` holds each source's rank.
 - `season` / `last5`: per-game averages over the season / the last 5 games played. `fppg` = fantasy points per game.
+- `roster_pct` is platform-wide ownership (Sleeper or ESPN); `trending` is Sleeper top-100 add/drop activity (24h and 168h).
+- `projected_fppg` is a conditional-on-playing model estimate, not official; `daily_projections` contains provider stat-line projections where available.
+- Source status is in catalog freshness.market_sources. Missing values are not zero.
 - `fantasy_team` null means the player is available in the league (when a league is configured).
 - Live Sleeper data (matchups, transactions, other leagues) is public at https://api.sleeper.app/v1/league/{{league_id}}
   (and /rosters, /users, /matchups/{{week}}); its player ids match `sleeper_id` here.
@@ -612,7 +628,10 @@ def main():
     (out / "data").mkdir(exist_ok=True)
     for f in ("players.json", "meta.json"):
         shutil.copy(DATA / f, out / "data" / f)
-    res = build(out, a.league, a.site_url, a.mcp_url)
+    today = datetime.now(market_data.ZoneInfo("America/New_York")).date()
+    season = str(today.year - (today.month < 7))
+    market = market_data.collect(season, today)
+    res = build(out, a.league, a.site_url, a.mcp_url, market=market)
     print(f"API: {res['players']} players -> {out / 'api'}"
           + (" (with league)" if res["league"] else " (no league configured)" if not res["league_error"] else
              f" (league FAILED: {res['league_error']})"))

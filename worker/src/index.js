@@ -37,11 +37,19 @@ function row(p) {
     ros_rank: r.ros?.consensus ?? null, dynasty_rank: r.dynasty?.consensus ?? null,
     fppg: s.fppg ?? null, last5_fppg: l5.fppg ?? null, mpg: s.mpg ?? null, gp: s.gp ?? null,
     injury: p.injury?.status ?? null, fantasy_team: p.fantasy_team?.team_name ?? null,
+    roster_pct: p.roster_pct ?? null, roster_pct_source: p.roster_pct_source ?? null,
+    trending: p.trending ?? null, projected_fppg: p.projected_fppg ?? null,
+    projection_source: p.projection_source ?? null, daily_projections: p.daily_projections ?? [],
   };
 }
 const SORTS = {
   ros: r => r.ros_rank ?? 9999, dynasty: r => r.dynasty_rank ?? 9999,
   fppg: r => -(r.fppg ?? -999), last5_fppg: r => -(r.last5_fppg ?? -999), mpg: r => -(r.mpg ?? -999),
+  roster_pct: r => -(r.roster_pct ?? -Infinity), projected_fppg: r => -(r.projected_fppg ?? -Infinity),
+  trending_adds: r => -(r.trending?.['24']?.adds ?? -Infinity),
+  trending_drops: r => -(r.trending?.['24']?.drops ?? -Infinity),
+  trending_adds_7d: r => -(r.trending?.['168']?.adds ?? -Infinity),
+  trending_drops_7d: r => -(r.trending?.['168']?.drops ?? -Infinity),
 };
 const clampLimit = (v, d, max = 200) => Math.max(1, Math.min(max, parseInt(v ?? d, 10) || d));
 
@@ -233,7 +241,7 @@ const TOOLS = {
     },
   },
   search_players: {
-    description: 'Find and filter NBA players. Returns compact rows: consensus ROS and dynasty ranks, fantasy points per game (season and last 5), minutes, injury status and Sleeper fantasy team.',
+    description: 'Find and filter NBA players. Returns compact rows: consensus ROS and dynasty ranks, fantasy points per game (season and last 5), minutes, injury status, Sleeper fantasy team, platform roster percentage and source, 24h/7d add/drop trends, estimated FPPG and daily provider projections if available.',
     inputSchema: {
       type: 'object', properties: {
         query: str('Part of a player name'),
@@ -261,7 +269,7 @@ const TOOLS = {
     },
   },
   get_player: {
-    description: 'Everything about one player: rankings by source, season and last-5 averages, injury details and outlook, fantasy team, and recent game logs with fantasy points.',
+    description: 'Everything about one player: rankings by source, season and last-5 averages, injury details and outlook, fantasy team, recent game logs with fantasy points, roster percentage, trending adds/drops and projections (model estimates labeled separately).',
     inputSchema: {
       type: 'object', required: ['name_or_id'], properties: {
         name_or_id: str('Player name (accents optional), or id / Sleeper id'),

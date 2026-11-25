@@ -10,7 +10,7 @@ const env = {
 };
 const players = [
   { id: '100', sleeper_id: '100', name: 'Starter One', team: 'DET', positions: ['PG'], age: 25,
-    rankings: { ros: { consensus: 5 }, dynasty: { consensus: 8 } }, season: { fppg: 50 }, last5: { fppg: 55 } },
+    rankings: { ros: { consensus: 5 }, dynasty: { consensus: 8 } }, season: { fppg: 50 }, last5: { fppg: 55 }, roster_pct: 95, roster_pct_source: 'Sleeper', projected_fppg: 53, trending: { '24': { adds: 12, drops: 3 } } },
   { id: '200', sleeper_id: '200', name: 'Bench Two', team: 'UTA', positions: ['C'], age: 23,
     rankings: { ros: { consensus: 100 }, dynasty: { consensus: 80 } }, season: { fppg: 22 }, last5: { fppg: 25 } },
   { id: '300', sleeper_id: '300', name: 'Dropped Three', team: 'NYK', positions: ['PF'], age: 24,
@@ -111,4 +111,14 @@ test('rejects invalid matchup weeks', async () => {
   assert.equal(r.status, 400);
   const d = await r.json();
   assert.match(d.error, /week must be/);
+});
+
+test('market metrics are returned and sortable', async () => {
+  const d = await callTool('search_players', { sort_by: 'projected_fppg' });
+  assert.equal(d.players[0].projected_fppg, 53);
+  assert.equal(d.players[0].roster_pct, 95);
+  assert.equal(d.players[0].trending['24'].adds, 12);
+  assert.equal(d.players[1].roster_pct, null);
+  const trends = await callTool('search_players', { sort_by: 'trending_adds' });
+  assert.equal(trends.players[0].name, 'Starter One');
 });

@@ -122,6 +122,24 @@ class BuildApiTests(unittest.TestCase):
         self.assertEqual(t["recent_transactions"][0]["waiver_bid"], 3)
         self.assertEqual(self.load("api/transactions.json")["weeks_checked"], [5, 4, 3])
 
+    def test_market_metrics(self):
+        data = {"sleeper_ownership": {"100": 92.1}, "add_24": {"200": 250},
+                "drop_24": {"200": 12},
+                "projection_2026-11-25": {"200": {"pts": 10, "ast": 2, "stl": 1, "blk": 0, "to": 1}}}
+        B.build(self.out, "999", market=(data, {"add_24": {"ok": True}}))
+        star = self.load("api/players/100.json")
+        free = self.load("api/players/200.json")
+        self.assertEqual(star["roster_pct"], 92.1)
+        self.assertEqual(star["roster_pct_source"], "Sleeper")
+        self.assertIsNone(star["trending"]["24"]["adds"])
+        self.assertEqual(free["trending"]["24"]["net"], 238)
+        self.assertIsNone(free["roster_pct"])
+        self.assertIsNotNone(free["projected_fppg"])
+        self.assertIsNone(free["daily_projections"][0]["projected_points"])
+        self.assertIn("reb", free["daily_projections"][0]["missing_scoring_keys"])
+        self.assertTrue(self.load("api/index.json")["freshness"]["market_sources"]["add_24"]["ok"])
+        self.assertEqual(self.load("api/rankings/ros.json")["players"][0]["roster_pct"], 92.1)
+
     def test_league_failure_is_not_fatal(self):
         def boom(url):
             raise OSError("network down")
