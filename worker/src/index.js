@@ -241,7 +241,7 @@ const TOOLS = {
     },
   },
   search_players: {
-    description: 'Find and filter NBA players. Returns compact rows: consensus ROS and dynasty ranks, fantasy points per game (season and last 5), minutes, injury status, Sleeper fantasy team, platform roster percentage and source, 24h/7d add/drop trends, estimated FPPG and daily provider projections if available.',
+    description: 'Find and filter NBA players. Returns compact rows: consensus ROS and dynasty ranks, fantasy points per game (season and last 5), minutes, injury status, Sleeper fantasy team, verified Sleeper dynasty roster percentage if available, separately labeled ESPN ownership, 24h/7d add/drop trends and daily provider projections if available.',
     inputSchema: {
       type: 'object', properties: {
         query: str('Part of a player name'),
@@ -269,7 +269,7 @@ const TOOLS = {
     },
   },
   get_player: {
-    description: 'Everything about one player: rankings by source, season and last-5 averages, injury details and outlook, fantasy team, recent game logs with fantasy points, roster percentage, trending adds/drops and projections (model estimates labeled separately).',
+    description: 'Everything about one player: rankings by source, season and last-5 averages, injury details and outlook, fantasy team, recent game logs with fantasy points, verified Sleeper dynasty roster percentage if available, separate ESPN ownership, trending adds/drops and provider projections when available. No synthetic FPPG.',
     inputSchema: {
       type: 'object', required: ['name_or_id'], properties: {
         name_or_id: str('Player name (accents optional), or id / Sleeper id'),
@@ -396,7 +396,7 @@ async function handle(msg, env) {
       return ok({
         protocolVersion: PROTOCOLS.includes(want) ? want : PROTOCOLS[0],
         capabilities: { tools: {} },
-        serverInfo: { name: 'hoops-tracker', title: 'Hoops Tracker', version: '1.0.0' },
+        serverInfo: { name: 'hoops-tracker', title: 'Hoops Tracker', version: '1.1.0' },
         instructions: 'NBA fantasy basketball data for a Sleeper points league: consensus dynasty and rest-of-season rankings, '
           + 'per-game stats and fantasy points, injuries, and Sleeper league rosters. Start with get_overview; use search_players '
           + 'or get_rankings for lists, get_player for one player, get_league for rosters, '
@@ -454,7 +454,7 @@ export default {
     }
     if (url.pathname === '/' || url.pathname === '/health') {
       return json({
-        name: 'Hoops Tracker MCP server', mcp_endpoint: `${url.origin}/mcp`, transport: 'streamable-http',
+        name: 'Hoops Tracker MCP server', version: '1.1.0', mcp_endpoint: `${url.origin}/mcp`, transport: 'streamable-http',
         data: env.DATA_URL, tools: Object.keys(TOOLS),
       });
     }
