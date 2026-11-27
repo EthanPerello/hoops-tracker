@@ -38,14 +38,14 @@ function row(p) {
     fppg: s.fppg ?? null, last5_fppg: l5.fppg ?? null, mpg: s.mpg ?? null, gp: s.gp ?? null,
     injury: p.injury?.status ?? null, fantasy_team: p.fantasy_team?.team_name ?? null,
     roster_pct: p.roster_pct ?? null, roster_pct_source: p.roster_pct_source ?? null,
-    trending: p.trending ?? null, projected_fppg: p.projected_fppg ?? null,
-    projection_source: p.projection_source ?? null, daily_projections: p.daily_projections ?? [],
+    espn_roster_pct: p.espn_roster_pct ?? null,
+    trending: p.trending ?? null, daily_projections: p.daily_projections ?? [],
   };
 }
 const SORTS = {
   ros: r => r.ros_rank ?? 9999, dynasty: r => r.dynasty_rank ?? 9999,
   fppg: r => -(r.fppg ?? -999), last5_fppg: r => -(r.last5_fppg ?? -999), mpg: r => -(r.mpg ?? -999),
-  roster_pct: r => -(r.roster_pct ?? -Infinity), projected_fppg: r => -(r.projected_fppg ?? -Infinity),
+  roster_pct: r => -(r.roster_pct ?? -Infinity), espn_roster_pct: r => -(r.espn_roster_pct ?? -Infinity),
   trending_adds: r => -(r.trending?.['24']?.adds ?? -Infinity),
   trending_drops: r => -(r.trending?.['24']?.drops ?? -Infinity),
   trending_adds_7d: r => -(r.trending?.['168']?.adds ?? -Infinity),
