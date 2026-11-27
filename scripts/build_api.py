@@ -394,7 +394,7 @@ def build(out, league_id=None, site_url="", mcp_url="", market=None):
         return [{"rank": s["rankings"][typ]["consensus"], "avg_rank": s["rankings"][typ]["avg"],
                  "sources": s["rankings"][typ]["sources"], "id": s["id"], "name": s["name"], "team": s["team"],
                  "positions": s["positions"], "fppg": (s["season"] or {}).get("fppg"),
-                 **{k: s[k] for k in ("roster_pct", "roster_pct_source", "espn_roster_pct", "trending", "daily_projections")},
+                 **{k: s[k] for k in ("roster_pct", "roster_pct_source", "sleeper_dynasty_candidate_pct", "espn_roster_pct", "trending", "daily_projections")},
                  "injury_status": (s["injury"] or {}).get("status"),
                  "fantasy_team": (s["fantasy_team"] or {}).get("team_name") if league else None} for s in rows]
     for typ, label in (("dynasty", "Dynasty (long-term value)"), ("ros", "Rest of season")):
@@ -426,7 +426,7 @@ def build(out, league_id=None, site_url="", mcp_url="", market=None):
                     "slot": slot, "dynasty_rank": (s["rankings"]["dynasty"] or {}).get("consensus"),
                     "ros_rank": (s["rankings"]["ros"] or {}).get("consensus"),
                     "fppg": (s["season"] or {}).get("fppg"), "last5_fppg": (s["last5"] or {}).get("fppg"),
-                    **{k: s[k] for k in ("roster_pct", "roster_pct_source", "espn_roster_pct", "trending", "daily_projections")},
+                    **{k: s[k] for k in ("roster_pct", "roster_pct_source", "sleeper_dynasty_candidate_pct", "espn_roster_pct", "trending", "daily_projections")},
                  "injury_status": (s["injury"] or {}).get("status")}
         league_out = {
             "configured": True, "league_id": league["league_id"], "name": league.get("name"),
@@ -444,7 +444,7 @@ def build(out, league_id=None, site_url="", mcp_url="", market=None):
                                 "ros_rank": s["rankings"]["ros"]["consensus"],
                                 "dynasty_rank": (s["rankings"]["dynasty"] or {}).get("consensus"),
                                 "fppg": (s["season"] or {}).get("fppg"), "last5_fppg": (s["last5"] or {}).get("fppg"),
-                                **{k: s[k] for k in ("roster_pct", "roster_pct_source", "espn_roster_pct", "trending", "daily_projections")},
+                                **{k: s[k] for k in ("roster_pct", "roster_pct_source", "sleeper_dynasty_candidate_pct", "espn_roster_pct", "trending", "daily_projections")},
                  "injury_status": (s["injury"] or {}).get("status")}
                                for s in summaries if s["sleeper_id"] and not s["fantasy_team"]
                                and s["rankings"]["ros"]][:60],
@@ -494,6 +494,7 @@ def build(out, league_id=None, site_url="", mcp_url="", market=None):
         "season / last5": "Per-game averages over the season / the player's last 5 games played (DNPs excluded).",
         "fppg": "Fantasy points per game under the scoring described in 'scoring'.",
         "roster_pct": "Verified Sleeper NBA dynasty percent rostered (0-100); currently unavailable, always null. Do not substitute generic ownership.",
+        "sleeper_dynasty_candidate_pct": "Unverified Sleeper NBA research league_type=2 ownership; only emitted if numeric dynasty and redraft requests return distinct profiles. Not confirmed app ownership.",
         "espn_roster_pct": "ESPN-wide ownership, not Sleeper dynasty ownership; null if unavailable.",
         "trending": "Sleeper platform adds/drops over 24 and 168 hours. Null means absent from top 100 or unavailable, NOT zero. See freshness.market_sources.",
         "daily_projections": "Optional Sleeper daily raw-stat projections scored with league settings. Missing scoring keys produce partial_points, NOT projected_points.",
@@ -601,7 +602,7 @@ league: {league.get('name') if league else 'not configured'}.
 
 - Ranks: 1 = best. `consensus` = average of the sources that rank the player, re-ranked. `sources` holds each source's rank.
 - `season` / `last5`: per-game averages over the season / the last 5 games played. `fppg` = fantasy points per game.
-- `roster_pct` is reserved for verified Sleeper NBA dynasty ownership; currently null. `espn_roster_pct` is ESPN-only ownership, not a substitute. `trending` is Sleeper top-100 add/drop activity (24h and 168h).
+- `roster_pct` is reserved for verified Sleeper NBA dynasty ownership; currently null. `sleeper_dynasty_candidate_pct` is an explicitly unverified NBA research value if numeric league types return distinct profiles; `espn_roster_pct` is ESPN-only ownership, not a substitute. `trending` is Sleeper top-100 add/drop activity (24h and 168h).
 - `daily_projections` contains provider stat-line projections where available; no synthetic FPPG estimate is published.
 - Source status is in catalog freshness.market_sources. Missing values are not zero.
 - `fantasy_team` null means the player is available in the league (when a league is configured).
