@@ -38,6 +38,7 @@ function row(p) {
     fppg: s.fppg ?? null, last5_fppg: l5.fppg ?? null, mpg: s.mpg ?? null, gp: s.gp ?? null,
     injury: p.injury?.status ?? null, fantasy_team: p.fantasy_team?.team_name ?? null,
     roster_pct: p.roster_pct ?? null, roster_pct_source: p.roster_pct_source ?? null,
+    sleeper_dynasty_candidate_pct: p.sleeper_dynasty_candidate_pct ?? null,
     espn_roster_pct: p.espn_roster_pct ?? null,
     trending: p.trending ?? null, daily_projections: p.daily_projections ?? [],
   };
@@ -45,7 +46,7 @@ function row(p) {
 const SORTS = {
   ros: r => r.ros_rank ?? 9999, dynasty: r => r.dynasty_rank ?? 9999,
   fppg: r => -(r.fppg ?? -999), last5_fppg: r => -(r.last5_fppg ?? -999), mpg: r => -(r.mpg ?? -999),
-  roster_pct: r => -(r.roster_pct ?? -Infinity), espn_roster_pct: r => -(r.espn_roster_pct ?? -Infinity),
+  roster_pct: r => -(r.roster_pct ?? -Infinity), sleeper_dynasty_candidate_pct: r => -(r.sleeper_dynasty_candidate_pct ?? -Infinity), espn_roster_pct: r => -(r.espn_roster_pct ?? -Infinity),
   trending_adds: r => -(r.trending?.['24']?.adds ?? -Infinity),
   trending_drops: r => -(r.trending?.['24']?.drops ?? -Infinity),
   trending_adds_7d: r => -(r.trending?.['168']?.adds ?? -Infinity),
@@ -241,7 +242,7 @@ const TOOLS = {
     },
   },
   search_players: {
-    description: 'Find and filter NBA players. Returns compact rows: consensus ROS and dynasty ranks, fantasy points per game (season and last 5), minutes, injury status, Sleeper fantasy team, verified Sleeper dynasty roster percentage if available, separately labeled ESPN ownership, 24h/7d add/drop trends and daily provider projections if available.',
+    description: 'Find and filter NBA players. Returns compact rows: consensus ROS and dynasty ranks, fantasy points per game (season and last 5), minutes, injury status, Sleeper fantasy team, verified Sleeper dynasty roster percentage if available, explicitly unverified Sleeper dynasty candidate percentage, separately labeled ESPN ownership, 24h/7d add/drop trends and daily provider projections if available.',
     inputSchema: {
       type: 'object', properties: {
         query: str('Part of a player name'),
@@ -269,7 +270,7 @@ const TOOLS = {
     },
   },
   get_player: {
-    description: 'Everything about one player: rankings by source, season and last-5 averages, injury details and outlook, fantasy team, recent game logs with fantasy points, verified Sleeper dynasty roster percentage if available, separate ESPN ownership, trending adds/drops and provider projections when available. No synthetic FPPG.',
+    description: 'Everything about one player: rankings by source, season and last-5 averages, injury details and outlook, fantasy team, recent game logs with fantasy points, verified Sleeper dynasty roster percentage if available, explicitly unverified Sleeper dynasty candidate percentage, separate ESPN ownership, trending adds/drops and provider projections when available. No synthetic FPPG.',
     inputSchema: {
       type: 'object', required: ['name_or_id'], properties: {
         name_or_id: str('Player name (accents optional), or id / Sleeper id'),
