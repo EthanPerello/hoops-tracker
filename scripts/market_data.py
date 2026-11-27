@@ -1,4 +1,4 @@
-"""Best-effort fantasy market feeds and transparent per-game estimates."""
+"""Best-effort fantasy market feeds and provider projections."""
 import json
 import math
 import urllib.request
@@ -71,16 +71,6 @@ def espn_ownership(payload):
     return out
 
 
-def estimated_fppg(games):
-    """Conditional on playing: blend season and last five actual fantasy scores."""
-    if not games:
-        return None
-    vals = [g["fantasy_points"] for g in games]
-    recent = vals[-5:]
-    weight = 0.6 * len(recent) / 5
-    return round((1-weight)*sum(vals)/len(vals) + weight*sum(recent)/len(recent), 2)
-
-
 def provider_projection(row, scoring):
     stats = row.get("stats", row)
     if not isinstance(stats, dict) or any(number(stats.get(k)) is None for k in ("pts", "ast", "stl", "blk", "to")):
@@ -106,7 +96,6 @@ def collect(season, today=None, fetch=get_json):
     for hours in (24, 168):
         for kind in ("add", "drop"):
             jobs.append((f"{kind}_{hours}", f"{SLEEPER}/players/nba/trending/{kind}?lookback_hours={hours}&limit=100", trend_map, None))
-    jobs.append(("sleeper_ownership", f"{RESEARCH}/{season}", ownership_map, None))
     jobs.append(("espn_ownership", f"{ESPN}/{int(season)+1}/players?view=players_wl",
                  espn_ownership, {"X-Fantasy-Filter": json.dumps({"players": {"limit": 1000}})}))
     for offset in range(3):
@@ -125,17 +114,19 @@ def collect(season, today=None, fetch=get_json):
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(attempt, jobs))
-    return {k: v for k,v,s in results}, {k: s for k,v,s in results}
+    values = {k: v for k,v,s in results}
+    statuses = {k: s for k,v,s in results}
+    statuses["sleeper_ownership"] = {"ok": False, "fetched_at": None,
+        "error": "Dynasty-specific NBA roster percentage not verified; generic research owned field disabled.",
+        "url": f"{RESEARCH}/{season}"}
+    return values, statuses
 
 
 def metrics(player, games, data, raw_scoring):
     sid = str(player.get("sid") or "")
     eid = str(player.get("nba_id") or "")
-    owned = data.get("sleeper_ownership", {}).get(sid)
-    source = "Sleeper" if owned is not None else None
-    if owned is None:
-        owned = data.get("espn_ownership", {}).get(eid)
-        source = "ESPN" if owned is not None else None
+    # The generic Sleeper research feed has no verified dynasty scope.
+    espn_owned = data.get("espn_ownership", {}).get(eid)
     trends = {}
     for hours in (24, 168):
         a = data.get(f"add_{hours}", {}).get(sid)
@@ -147,8 +138,6 @@ def metrics(player, games, data, raw_scoring):
             result = provider_projection(rows[sid], raw_scoring)
             if result:
                 daily.append({"date": key.removeprefix("projection_"), "source": "Sleeper daily raw stats", **result})
-    estimate = estimated_fppg(games)
-    return {"roster_pct": owned, "roster_pct_source": source,
-            "trending": trends, "projected_fppg": estimate,
-            "projection_source": "Hoops Tracker weighted actuals (if active)" if estimate is not None else None,
+    return {"roster_pct": None, "roster_pct_source": None,
+            "espn_roster_pct": espn_owned, "trending": trends,
             "daily_projections": daily}
