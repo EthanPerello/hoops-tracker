@@ -41,7 +41,7 @@ SLEEPER = "https://api.sleeper.app/v1"
 SCORING = [
     ("pts", 1, ["pts"]), ("ast", 2, ["ast"]), ("stl", 3, ["stl"]), ("blk", 3, ["blk"]),
     ("to", -1, ["to"]), ("dd", 2, ["dd"]), ("td", 3, ["td"]), ("tf", -1, ["tf"]),
-    ("fgm", 1, ["fgm"]), ("fga", -0.25, ["fga"]), ("ftm", 1, ["ftm"]), ("ftmiss", -0.5, ["ftmiss"]),
+    ("fgm", 1, ["fgm"]), ("fga", -0.25, ["fga"]), ("ftm", 1, ["ftm"]), ("ftmiss", -0.5, ["ftmiss", "ftmi"]),
     ("tpm", 1, ["tpm", "fg3m"]), ("oreb", 1.5, ["oreb"]), ("dreb", 1, ["dreb"]),
     ("b40", 2, ["bonus_pt_40p"]), ("b50", 3, ["bonus_pt_50p"]),
     ("b15ast", 2, ["bonus_ast_15p"]), ("b20reb", 2, ["bonus_reb_20p"]),
