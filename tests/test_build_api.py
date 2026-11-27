@@ -122,6 +122,20 @@ class BuildApiTests(unittest.TestCase):
         self.assertEqual(t["recent_transactions"][0]["waiver_bid"], 3)
         self.assertEqual(self.load("api/transactions.json")["weeks_checked"], [5, 4, 3])
 
+    def test_sleeper_missed_free_throw_key(self):
+        scoring, unmapped = B.map_sleeper_scoring({"ftmi": -0.5})
+        self.assertEqual(scoring["ftmiss"], -0.5)
+        self.assertEqual(unmapped, {})
+        game = {key: 0 for key in FIELDS}
+        game.update({"fta": 5, "ftm": 2})
+        self.assertEqual(B.fantasy_points(game, scoring), -1.5)
+
+    def test_ownership_probe(self):
+        report = B.market_data.ownership_diagnostic({"4777": {"owned": 1.5, "owned_dynasty": 60}, "2577": {"owned": 99.9}})
+        self.assertEqual(report["samples"]["4777"]["owned_dynasty"], 60)
+        self.assertIn("owned", report["fields"])
+        self.assertEqual(report["player_count"], 2)
+
     def test_market_metrics(self):
         data = {"sleeper_ownership": {"100": 92.1}, "add_24": {"200": 250},
                 "drop_24": {"200": 12},
