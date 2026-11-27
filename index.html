@@ -149,7 +149,7 @@ const fmt = (v, d = 1) => v == null || isNaN(v) ? '—' : Number(v).toFixed(d);
 const SCORING = [
   ['pts','Points',1,['pts']], ['ast','Assist',2,['ast']], ['stl','Steal',3,['stl']], ['blk','Block',3,['blk']],
   ['to','Turnover',-1,['to']], ['dd','Double-double',2,['dd']], ['td','Triple-double',3,['td']], ['tf','Technical foul',-1,['tf']],
-  ['fgm','FGM',1,['fgm']], ['fga','FGA',-0.25,['fga']], ['ftm','FTM',1,['ftm']], ['ftmiss','FT missed',-0.5,['ftmiss']],
+  ['fgm','FGM',1,['fgm']], ['fga','FGA',-0.25,['fga']], ['ftm','FTM',1,['ftm']], ['ftmiss','FT missed',-0.5,['ftmiss','ftmi']],
   ['tpm','3PM',1,['tpm','fg3m']], ['oreb','Off reb',1.5,['oreb']], ['dreb','Def reb',1,['dreb']],
   ['b40','40+ pts bonus',2,['bonus_pt_40p']], ['b50','50+ pts bonus',3,['bonus_pt_50p']],
   ['b15ast','15+ ast bonus',2,['bonus_ast_15p']], ['b20reb','20+ reb bonus',2,['bonus_reb_20p']],
