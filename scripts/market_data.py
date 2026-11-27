@@ -71,6 +71,14 @@ def ownership_diagnostic(payload):
     return {"player_count": len(rows), "fields": fields, "samples": samples}
 
 
+def compare_ownership_scopes(dynasty, redraft):
+    """Reject feeds that ignore league_type; distinct feeds are evidence, not proof."""
+    common = set(dynasty) & set(redraft)
+    changed = sum(abs(dynasty[sid] - redraft[sid]) >= 0.5 for sid in common)
+    return {"common_players": len(common), "different_players": changed,
+            "distinct": len(common) >= 100 and changed >= max(10, len(common) * 0.1)}
+
+
 def espn_ownership(payload):
     rows = payload.get("players", []) if isinstance(payload, dict) else payload
     out = {}
@@ -115,6 +123,10 @@ def collect(season, today=None, fetch=get_json):
     # alone is not evidence that the upstream actually honors it.
     jobs.append(("ownership_probe_generic", f"{RESEARCH}/{season}", ownership_diagnostic, None))
     jobs.append(("ownership_probe_dynasty", f"{RESEARCH}/{season}?league_type=dynasty", ownership_diagnostic, None))
+    # A public NFL integration uses league_type=2 for dynasty and 1 for redraft.
+    # NBA scope must be checked independently; never silently promote these values.
+    jobs.append(("ownership_numeric_dynasty", f"{RESEARCH}/{season}?league_type=2", ownership_map, None))
+    jobs.append(("ownership_numeric_redraft", f"{RESEARCH}/{season}?league_type=1", ownership_map, None))
     jobs.append(("espn_ownership", f"{ESPN}/{int(season)+1}/players?view=players_wl",
                  espn_ownership, {"X-Fantasy-Filter": json.dumps({"players": {"limit": 1000}})}))
     for offset in range(3):
@@ -140,6 +152,17 @@ def collect(season, today=None, fetch=get_json):
             statuses[key]["diagnostic"] = values.pop(key)
             statuses[key]["count"] = statuses[key]["diagnostic"]["player_count"]
             statuses[key]["scope_verified"] = False
+    dynasty = values.pop("ownership_numeric_dynasty", {})
+    redraft = values.pop("ownership_numeric_redraft", {})
+    comparison = compare_ownership_scopes(dynasty, redraft)
+    statuses["ownership_numeric_comparison"] = {
+        "ok": comparison["distinct"], "scope_verified": False, **comparison,
+        "samples": {sid: {"type_2": dynasty.get(sid), "type_1": redraft.get(sid)}
+                    for sid in ("4777", "2577", "1970", "2312", "1691")},
+        "note": "Candidate NBA dynasty ownership; numeric league types inferred from NFL, not verified against NBA app."
+    }
+    if comparison["distinct"]:
+        values["sleeper_dynasty_candidates"] = dynasty
     statuses["sleeper_ownership"] = {"ok": False, "fetched_at": None,
         "error": "Dynasty-specific NBA roster percentage not verified; generic research owned field disabled.",
         "url": f"{RESEARCH}/{season}"}
@@ -163,5 +186,6 @@ def metrics(player, games, data, raw_scoring):
             if result:
                 daily.append({"date": key.removeprefix("projection_"), "source": "Sleeper daily raw stats", **result})
     return {"roster_pct": None, "roster_pct_source": None,
+            "sleeper_dynasty_candidate_pct": data.get("sleeper_dynasty_candidates", {}).get(sid),
             "espn_roster_pct": espn_owned, "trending": trends,
             "daily_projections": daily}
