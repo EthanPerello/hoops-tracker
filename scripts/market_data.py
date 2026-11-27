@@ -56,6 +56,21 @@ def ownership_map(payload):
             if (v := number(row.get("owned"))) is not None and 0 <= v <= 100 / scale}
 
 
+def ownership_diagnostic(payload):
+    """Inspect public research fields without treating unknown scope as dynasty data."""
+    rows = player_map(payload)
+    if not rows:
+        raise ValueError("Empty or unrecognized research feed")
+    fields = sorted({key for row in rows.values() for key in row
+                     if any(word in key.lower() for word in ("own", "roster", "dynasty", "redraft", "start"))})
+    samples = {}
+    for sid in ("4777", "2577", "1970", "2312", "1691"):
+        if sid in rows:
+            samples[sid] = {key: rows[sid][key] for key in fields
+                            if key in rows[sid] and number(rows[sid][key]) is not None}
+    return {"player_count": len(rows), "fields": fields, "samples": samples}
+
+
 def espn_ownership(payload):
     rows = payload.get("players", []) if isinstance(payload, dict) else payload
     out = {}
@@ -96,6 +111,10 @@ def collect(season, today=None, fetch=get_json):
     for hours in (24, 168):
         for kind in ("add", "drop"):
             jobs.append((f"{kind}_{hours}", f"{SLEEPER}/players/nba/trending/{kind}?lookback_hours={hours}&limit=100", trend_map, None))
+    # Probe both generic and explicitly requested dynasty research. A query parameter
+    # alone is not evidence that the upstream actually honors it.
+    jobs.append(("ownership_probe_generic", f"{RESEARCH}/{season}", ownership_diagnostic, None))
+    jobs.append(("ownership_probe_dynasty", f"{RESEARCH}/{season}?league_type=dynasty", ownership_diagnostic, None))
     jobs.append(("espn_ownership", f"{ESPN}/{int(season)+1}/players?view=players_wl",
                  espn_ownership, {"X-Fantasy-Filter": json.dumps({"players": {"limit": 1000}})}))
     for offset in range(3):
@@ -116,6 +135,11 @@ def collect(season, today=None, fetch=get_json):
         results = list(pool.map(attempt, jobs))
     values = {k: v for k,v,s in results}
     statuses = {k: s for k,v,s in results}
+    for key in ("ownership_probe_generic", "ownership_probe_dynasty"):
+        if values.get(key):
+            statuses[key]["diagnostic"] = values.pop(key)
+            statuses[key]["count"] = statuses[key]["diagnostic"]["player_count"]
+            statuses[key]["scope_verified"] = False
     statuses["sleeper_ownership"] = {"ok": False, "fetched_at": None,
         "error": "Dynasty-specific NBA roster percentage not verified; generic research owned field disabled.",
         "url": f"{RESEARCH}/{season}"}
