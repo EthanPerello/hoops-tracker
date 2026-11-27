@@ -136,8 +136,15 @@ class BuildApiTests(unittest.TestCase):
         self.assertIn("owned", report["fields"])
         self.assertEqual(report["player_count"], 2)
 
+    def test_numeric_ownership_scope_comparison(self):
+        dynasty = {str(i): 60.0 for i in range(150)}
+        redraft = {str(i): 1.5 for i in range(150)}
+        self.assertTrue(B.market_data.compare_ownership_scopes(dynasty, redraft)["distinct"])
+        self.assertFalse(B.market_data.compare_ownership_scopes(dynasty, dynasty)["distinct"])
+        self.assertFalse(B.market_data.compare_ownership_scopes({"1": 60}, {"1": 1})["distinct"])
+
     def test_market_metrics(self):
-        data = {"sleeper_ownership": {"100": 92.1}, "add_24": {"200": 250},
+        data = {"sleeper_ownership": {"100": 92.1}, "sleeper_dynasty_candidates": {"100": 60}, "add_24": {"200": 250},
                 "drop_24": {"200": 12},
                 "projection_2026-11-25": {"200": {"pts": 10, "ast": 2, "stl": 1, "blk": 0, "to": 1}}}
         B.build(self.out, "999", market=(data, {"add_24": {"ok": True}}))
@@ -145,6 +152,8 @@ class BuildApiTests(unittest.TestCase):
         free = self.load("api/players/200.json")
         self.assertIsNone(star["roster_pct"])
         self.assertIsNone(star["roster_pct_source"])
+        self.assertEqual(star["sleeper_dynasty_candidate_pct"], 60)
+        self.assertIsNone(free["sleeper_dynasty_candidate_pct"])
         self.assertIn("espn_roster_pct", star)
         self.assertIsNone(star["trending"]["24"]["adds"])
         self.assertEqual(free["trending"]["24"]["net"], 238)
