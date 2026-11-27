@@ -32,6 +32,8 @@ jobs:
           path: data/box
           key: box-${{ github.run_id }}
           restore-keys: box-
+      - name: Run offline regression tests
+        run: python3 -m unittest discover tests
       - run: python3 scripts/update.py
       - name: Build site + agent API (api/, llms.txt, openapi.json)
         run: python3 scripts/build_api.py _site
