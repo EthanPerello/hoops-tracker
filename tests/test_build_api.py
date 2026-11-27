@@ -129,16 +129,18 @@ class BuildApiTests(unittest.TestCase):
         B.build(self.out, "999", market=(data, {"add_24": {"ok": True}}))
         star = self.load("api/players/100.json")
         free = self.load("api/players/200.json")
-        self.assertEqual(star["roster_pct"], 92.1)
-        self.assertEqual(star["roster_pct_source"], "Sleeper")
+        self.assertIsNone(star["roster_pct"])
+        self.assertIsNone(star["roster_pct_source"])
+        self.assertIn("espn_roster_pct", star)
         self.assertIsNone(star["trending"]["24"]["adds"])
         self.assertEqual(free["trending"]["24"]["net"], 238)
         self.assertIsNone(free["roster_pct"])
-        self.assertIsNotNone(free["projected_fppg"])
+        self.assertNotIn("projected_fppg", free)
+        self.assertNotIn("projection_source", free)
         self.assertIsNone(free["daily_projections"][0]["projected_points"])
         self.assertIn("reb", free["daily_projections"][0]["missing_scoring_keys"])
         self.assertTrue(self.load("api/index.json")["freshness"]["market_sources"]["add_24"]["ok"])
-        self.assertEqual(self.load("api/rankings/ros.json")["players"][0]["roster_pct"], 92.1)
+        self.assertIsNone(self.load("api/rankings/ros.json")["players"][0]["roster_pct"])
 
     def test_league_failure_is_not_fatal(self):
         def boom(url):
