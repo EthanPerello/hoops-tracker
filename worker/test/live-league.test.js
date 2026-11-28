@@ -10,9 +10,9 @@ const env = {
 };
 const players = [
   { id: '100', sleeper_id: '100', name: 'Starter One', team: 'DET', positions: ['PG'], age: 25,
-    rankings: { ros: { consensus: 5 }, dynasty: { consensus: 8 } }, season: { fppg: 50 }, last5: { fppg: 55 }, roster_pct: 95, roster_pct_source: 'Sleeper', projected_fppg: 53, trending: { '24': { adds: 12, drops: 3 } } },
+    rankings: { ros: { consensus: 5 }, dynasty: { consensus: 8 } }, season: { fppg: 50 }, last5: { fppg: 55 }, roster_pct: 95, roster_pct_source: 'Sleeper dynasty (verified fixture)', espn_roster_pct: 90, trending: { '24': { adds: 12, drops: 3 } } },
   { id: '200', sleeper_id: '200', name: 'Bench Two', team: 'UTA', positions: ['C'], age: 23,
-    rankings: { ros: { consensus: 100 }, dynasty: { consensus: 80 } }, season: { fppg: 22 }, last5: { fppg: 25 } },
+    rankings: { ros: { consensus: 100 }, dynasty: { consensus: 80 } }, season: { fppg: 22 }, last5: { fppg: 25 }, roster_pct: null, sleeper_dynasty_candidate_pct: 60, espn_roster_pct: 1.42 },
   { id: '300', sleeper_id: '300', name: 'Dropped Three', team: 'NYK', positions: ['PF'], age: 24,
     rankings: { ros: { consensus: 200 }, dynasty: { consensus: 150 } }, season: { fppg: 15 }, last5: { fppg: 16 } },
 ];
@@ -114,11 +114,22 @@ test('rejects invalid matchup weeks', async () => {
 });
 
 test('market metrics are returned and sortable', async () => {
-  const d = await callTool('search_players', { sort_by: 'projected_fppg' });
-  assert.equal(d.players[0].projected_fppg, 53);
+  const d = await callTool('search_players', { sort_by: 'roster_pct' });
+  assert.equal(d.players[0].name, 'Starter One');
   assert.equal(d.players[0].roster_pct, 95);
+  assert.equal(d.players[0].espn_roster_pct, 90);
+  assert.equal(d.players[0].fppg, 50);
+  assert.equal(d.players[0].last5_fppg, 55);
+  assert.ok(!Object.hasOwn(d.players[0], 'projected_fppg'));
   assert.equal(d.players[0].trending['24'].adds, 12);
-  assert.equal(d.players[1].roster_pct, null);
+  const bench = d.players.find(p => p.id === '200');
+  assert.equal(bench.roster_pct, null);
+  assert.equal(bench.sleeper_dynasty_candidate_pct, 60);
+  assert.equal(bench.espn_roster_pct, 1.42);
+  const candidates = await callTool('search_players', { sort_by: 'sleeper_dynasty_candidate_pct' });
+  assert.equal(candidates.players[0].name, 'Bench Two');
+  const espn = await callTool('search_players', { sort_by: 'espn_roster_pct' });
+  assert.equal(espn.players[0].name, 'Starter One');
   const trends = await callTool('search_players', { sort_by: 'trending_adds' });
   assert.equal(trends.players[0].name, 'Starter One');
 });
