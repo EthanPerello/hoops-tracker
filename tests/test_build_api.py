@@ -130,50 +130,23 @@ class BuildApiTests(unittest.TestCase):
         game.update({"fta": 5, "ftm": 2})
         self.assertEqual(B.fantasy_points(game, scoring), -1.5)
 
-    def test_ownership_probe(self):
-        report = B.market_data.ownership_diagnostic({"4777": {"owned": 1.5, "owned_dynasty": 60}, "2577": {"owned": 99.9}})
-        self.assertEqual(report["samples"]["4777"]["owned_dynasty"], 60)
-        self.assertIn("owned", report["fields"])
-        self.assertEqual(report["player_count"], 2)
-
-    def test_numeric_ownership_scope_comparison(self):
-        dynasty = {str(i): 60.0 for i in range(150)}
-        redraft = {str(i): 1.5 for i in range(150)}
-        self.assertTrue(B.market_data.compare_ownership_scopes(dynasty, redraft)["distinct"])
-        self.assertFalse(B.market_data.compare_ownership_scopes(dynasty, dynasty)["distinct"])
-        self.assertFalse(B.market_data.compare_ownership_scopes({"1": 60}, {"1": 1})["distinct"])
-
-    def test_verified_dynasty_ownership(self):
-        data = {"sleeper_dynasty_verified": {"100": 58.7, "200": 0}, "sleeper_ownership": {"100": 1.5}}
-        B.build(self.out, "999", market=(data, {}))
-        star = self.load("api/players/100.json")
-        free = self.load("api/players/200.json")
-        self.assertEqual(star["roster_pct"], 58.7)
-        self.assertEqual(star["roster_pct_source"], "Sleeper NBA dynasty (league_type=2)")
-        self.assertEqual(free["roster_pct"], 0)
-        self.assertEqual(self.load("api/rankings/ros.json")["players"][0]["roster_pct"], 58.7)
-
     def test_market_metrics(self):
-        data = {"sleeper_ownership": {"100": 92.1}, "sleeper_dynasty_candidates": {"100": 60}, "add_24": {"200": 250},
+        data = {"sleeper_dynasty_verified": {"100": 19.9}, "espn_ownership": {"100": 9.05}, "add_24": {"200": 250},
                 "drop_24": {"200": 12},
                 "projection_2026-11-25": {"200": {"pts": 10, "ast": 2, "stl": 1, "blk": 0, "to": 1}}}
         B.build(self.out, "999", market=(data, {"add_24": {"ok": True}}))
         star = self.load("api/players/100.json")
         free = self.load("api/players/200.json")
-        self.assertIsNone(star["roster_pct"])
-        self.assertIsNone(star["roster_pct_source"])
-        self.assertEqual(star["sleeper_dynasty_candidate_pct"], 60)
-        self.assertIsNone(free["sleeper_dynasty_candidate_pct"])
-        self.assertIn("espn_roster_pct", star)
+        for row in (star, free, self.load("api/rankings/ros.json")["players"][0], self.load("api/league.json")["teams"][0]["players"][0]):
+            for field in ("roster_pct", "roster_pct_source", "sleeper_dynasty_candidate_pct", "espn_roster_pct"):
+                self.assertNotIn(field, row)
         self.assertIsNone(star["trending"]["24"]["adds"])
         self.assertEqual(free["trending"]["24"]["net"], 238)
-        self.assertIsNone(free["roster_pct"])
         self.assertNotIn("projected_fppg", free)
         self.assertNotIn("projection_source", free)
         self.assertIsNone(free["daily_projections"][0]["projected_points"])
         self.assertIn("reb", free["daily_projections"][0]["missing_scoring_keys"])
         self.assertTrue(self.load("api/index.json")["freshness"]["market_sources"]["add_24"]["ok"])
-        self.assertIsNone(self.load("api/rankings/ros.json")["players"][0]["roster_pct"])
 
     def test_league_failure_is_not_fatal(self):
         def boom(url):
