@@ -493,8 +493,8 @@ def build(out, league_id=None, site_url="", mcp_url="", market=None):
         "dynasty": "Long-term (keeper/dynasty) value.", "ros": "Rest-of-season value.",
         "season / last5": "Per-game averages over the season / the player's last 5 games played (DNPs excluded).",
         "fppg": "Fantasy points per game under the scoring described in 'scoring'.",
-        "roster_pct": "Verified Sleeper NBA dynasty percent rostered (0-100); currently unavailable, always null. Do not substitute generic ownership.",
-        "sleeper_dynasty_candidate_pct": "Unverified Sleeper NBA research league_type=2 ownership; only emitted if numeric dynasty and redraft requests return distinct profiles. Not confirmed app ownership.",
+        "roster_pct": "Sleeper NBA dynasty percent rostered (0-100), from league_type=2 after a distinct-scope check. Null if unavailable; never substitute generic ownership.",
+        "sleeper_dynasty_candidate_pct": "Legacy unverified candidate field; normally null now that the numeric dynasty feed is enabled.",
         "espn_roster_pct": "ESPN-wide ownership, not Sleeper dynasty ownership; null if unavailable.",
         "trending": "Sleeper platform adds/drops over 24 and 168 hours. Null means absent from top 100 or unavailable, NOT zero. See freshness.market_sources.",
         "daily_projections": "Optional Sleeper daily raw-stat projections scored with league settings. Missing scoring keys produce partial_points, NOT projected_points.",
@@ -602,7 +602,7 @@ league: {league.get('name') if league else 'not configured'}.
 
 - Ranks: 1 = best. `consensus` = average of the sources that rank the player, re-ranked. `sources` holds each source's rank.
 - `season` / `last5`: per-game averages over the season / the last 5 games played. `fppg` = fantasy points per game.
-- `roster_pct` is reserved for verified Sleeper NBA dynasty ownership; currently null. `sleeper_dynasty_candidate_pct` is an explicitly unverified NBA research value if numeric league types return distinct profiles; `espn_roster_pct` is ESPN-only ownership, not a substitute. `trending` is Sleeper top-100 add/drop activity (24h and 168h).
+- `roster_pct` is Sleeper NBA dynasty ownership from league_type=2 after a distinct-scope check. `sleeper_dynasty_candidate_pct` is a legacy unverified candidate field, normally null; `espn_roster_pct` is ESPN-only ownership, not a substitute. `trending` is Sleeper top-100 add/drop activity (24h and 168h).
 - `daily_projections` contains provider stat-line projections where available; no synthetic FPPG estimate is published.
 - Source status is in catalog freshness.market_sources. Missing values are not zero.
 - `fantasy_team` null means the player is available in the league (when a league is configured).

@@ -143,6 +143,16 @@ class BuildApiTests(unittest.TestCase):
         self.assertFalse(B.market_data.compare_ownership_scopes(dynasty, dynasty)["distinct"])
         self.assertFalse(B.market_data.compare_ownership_scopes({"1": 60}, {"1": 1})["distinct"])
 
+    def test_verified_dynasty_ownership(self):
+        data = {"sleeper_dynasty_verified": {"100": 58.7, "200": 0}, "sleeper_ownership": {"100": 1.5}}
+        B.build(self.out, "999", market=(data, {}))
+        star = self.load("api/players/100.json")
+        free = self.load("api/players/200.json")
+        self.assertEqual(star["roster_pct"], 58.7)
+        self.assertEqual(star["roster_pct_source"], "Sleeper NBA dynasty (league_type=2)")
+        self.assertEqual(free["roster_pct"], 0)
+        self.assertEqual(self.load("api/rankings/ros.json")["players"][0]["roster_pct"], 58.7)
+
     def test_market_metrics(self):
         data = {"sleeper_ownership": {"100": 92.1}, "sleeper_dynasty_candidates": {"100": 60}, "add_24": {"200": 250},
                 "drop_24": {"200": 12},

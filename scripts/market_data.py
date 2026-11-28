@@ -156,23 +156,26 @@ def collect(season, today=None, fetch=get_json):
     redraft = values.pop("ownership_numeric_redraft", {})
     comparison = compare_ownership_scopes(dynasty, redraft)
     statuses["ownership_numeric_comparison"] = {
-        "ok": comparison["distinct"], "scope_verified": False, **comparison,
+        "ok": comparison["distinct"], "scope_verified": comparison["distinct"], **comparison,
         "samples": {sid: {"type_2": dynasty.get(sid), "type_1": redraft.get(sid)}
                     for sid in ("4777", "2577", "1970", "2312", "1691")},
-        "note": "Candidate NBA dynasty ownership; numeric league types inferred from NFL, not verified against NBA app."
+        "note": "NBA league_type=2 and type=1 returned materially distinct profiles on 2026-11-27; Kalkbrenner 58.7% vs 1.5% matched the user-reported approximately 60% dynasty app value. Exact app refresh timing may differ."
     }
     if comparison["distinct"]:
-        values["sleeper_dynasty_candidates"] = dynasty
-    statuses["sleeper_ownership"] = {"ok": False, "fetched_at": None,
-        "error": "Dynasty-specific NBA roster percentage not verified; generic research owned field disabled.",
-        "url": f"{RESEARCH}/{season}"}
+        values["sleeper_dynasty_verified"] = dynasty
+    statuses["sleeper_ownership"] = {**statuses["ownership_numeric_dynasty"],
+        "ok": comparison["distinct"], "scope_verified": comparison["distinct"],
+        "scope": "NBA dynasty (league_type=2)"}
+    if not comparison["distinct"]:
+        statuses["sleeper_ownership"]["error"] = "Dynasty and redraft ownership profiles could not be distinguished; ownership withheld."
     return values, statuses
 
 
 def metrics(player, games, data, raw_scoring):
     sid = str(player.get("sid") or "")
     eid = str(player.get("nba_id") or "")
-    # The generic Sleeper research feed has no verified dynasty scope.
+    # Use only the numeric dynasty feed after the scope comparison passes.
+    dynasty_owned = data.get("sleeper_dynasty_verified", {}).get(sid)
     espn_owned = data.get("espn_ownership", {}).get(eid)
     trends = {}
     for hours in (24, 168):
@@ -185,7 +188,8 @@ def metrics(player, games, data, raw_scoring):
             result = provider_projection(rows[sid], raw_scoring)
             if result:
                 daily.append({"date": key.removeprefix("projection_"), "source": "Sleeper daily raw stats", **result})
-    return {"roster_pct": None, "roster_pct_source": None,
+    return {"roster_pct": dynasty_owned,
+            "roster_pct_source": "Sleeper NBA dynasty (league_type=2)" if dynasty_owned is not None else None,
             "sleeper_dynasty_candidate_pct": data.get("sleeper_dynasty_candidates", {}).get(sid),
             "espn_roster_pct": espn_owned, "trending": trends,
             "daily_projections": daily}
