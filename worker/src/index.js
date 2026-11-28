@@ -26,7 +26,16 @@ async function getJSON(url, ttl = CACHE_TTL) {
   if (!r.ok) throw new Error(`${url} returned HTTP ${r.status}`);
   return r.json();
 }
-const site = (env, path) => getJSON(`${env.DATA_URL.replace(/\/$/, '')}/${path}`);
+// Strip retired ownership fields even from cached pre-removal Pages responses.
+const RETIRED_MARKET_FIELDS = new Set(['roster_pct', 'roster_pct_source', 'sleeper_dynasty_candidate_pct', 'espn_roster_pct', 'sleeper_ownership', 'espn_ownership', 'ownership_probe_generic', 'ownership_probe_dynasty', 'ownership_numeric_dynasty', 'ownership_numeric_redraft', 'ownership_numeric_comparison']);
+function stripRetiredMarketFields(value) {
+  if (Array.isArray(value)) return value.map(stripRetiredMarketFields);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !RETIRED_MARKET_FIELDS.has(key))
+    .map(([key, item]) => [key, stripRetiredMarketFields(item)]));
+  return value;
+}
+const site = async (env, path) => stripRetiredMarketFields(await getJSON(`${env.DATA_URL.replace(/\/$/, '')}/${path}`));
 
 const fold = s => String(s ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[.'’]/g, '');
 
@@ -37,16 +46,12 @@ function row(p) {
     ros_rank: r.ros?.consensus ?? null, dynasty_rank: r.dynasty?.consensus ?? null,
     fppg: s.fppg ?? null, last5_fppg: l5.fppg ?? null, mpg: s.mpg ?? null, gp: s.gp ?? null,
     injury: p.injury?.status ?? null, fantasy_team: p.fantasy_team?.team_name ?? null,
-    roster_pct: p.roster_pct ?? null, roster_pct_source: p.roster_pct_source ?? null,
-    sleeper_dynasty_candidate_pct: p.sleeper_dynasty_candidate_pct ?? null,
-    espn_roster_pct: p.espn_roster_pct ?? null,
     trending: p.trending ?? null, daily_projections: p.daily_projections ?? [],
   };
 }
 const SORTS = {
   ros: r => r.ros_rank ?? 9999, dynasty: r => r.dynasty_rank ?? 9999,
   fppg: r => -(r.fppg ?? -999), last5_fppg: r => -(r.last5_fppg ?? -999), mpg: r => -(r.mpg ?? -999),
-  roster_pct: r => -(r.roster_pct ?? -Infinity), sleeper_dynasty_candidate_pct: r => -(r.sleeper_dynasty_candidate_pct ?? -Infinity), espn_roster_pct: r => -(r.espn_roster_pct ?? -Infinity),
   trending_adds: r => -(r.trending?.['24']?.adds ?? -Infinity),
   trending_drops: r => -(r.trending?.['24']?.drops ?? -Infinity),
   trending_adds_7d: r => -(r.trending?.['168']?.adds ?? -Infinity),
@@ -242,7 +247,7 @@ const TOOLS = {
     },
   },
   search_players: {
-    description: 'Find and filter NBA players. Returns compact rows: consensus ROS and dynasty ranks, fantasy points per game (season and last 5), minutes, injury status, Sleeper fantasy team, verified Sleeper dynasty roster percentage if available, explicitly unverified Sleeper dynasty candidate percentage, separately labeled ESPN ownership, 24h/7d add/drop trends and daily provider projections if available.',
+    description: 'Find and filter NBA players. Returns compact rows: consensus ROS and dynasty ranks, fantasy points per game (season and last 5), minutes, injury status, Sleeper fantasy team, 24h/7d add/drop trends and daily provider projections if available.',
     inputSchema: {
       type: 'object', properties: {
         query: str('Part of a player name'),
@@ -270,7 +275,7 @@ const TOOLS = {
     },
   },
   get_player: {
-    description: 'Everything about one player: rankings by source, season and last-5 averages, injury details and outlook, fantasy team, recent game logs with fantasy points, verified Sleeper dynasty roster percentage if available, explicitly unverified Sleeper dynasty candidate percentage, separate ESPN ownership, trending adds/drops and provider projections when available. No synthetic FPPG.',
+    description: 'Everything about one player: rankings by source, season and last-5 averages, injury details and outlook, fantasy team, recent game logs with fantasy points, trending adds/drops and provider projections when available. No synthetic FPPG.',
     inputSchema: {
       type: 'object', required: ['name_or_id'], properties: {
         name_or_id: str('Player name (accents optional), or id / Sleeper id'),
@@ -397,7 +402,7 @@ async function handle(msg, env) {
       return ok({
         protocolVersion: PROTOCOLS.includes(want) ? want : PROTOCOLS[0],
         capabilities: { tools: {} },
-        serverInfo: { name: 'hoops-tracker', title: 'Hoops Tracker', version: '1.1.0' },
+        serverInfo: { name: 'hoops-tracker', title: 'Hoops Tracker', version: '1.2.0' },
         instructions: 'NBA fantasy basketball data for a Sleeper points league: consensus dynasty and rest-of-season rankings, '
           + 'per-game stats and fantasy points, injuries, and Sleeper league rosters. Start with get_overview; use search_players '
           + 'or get_rankings for lists, get_player for one player, get_league for rosters, '
@@ -455,7 +460,7 @@ export default {
     }
     if (url.pathname === '/' || url.pathname === '/health') {
       return json({
-        name: 'Hoops Tracker MCP server', version: '1.1.0', mcp_endpoint: `${url.origin}/mcp`, transport: 'streamable-http',
+        name: 'Hoops Tracker MCP server', version: '1.2.0', mcp_endpoint: `${url.origin}/mcp`, transport: 'streamable-http',
         data: env.DATA_URL, tools: Object.keys(TOOLS),
       });
     }
